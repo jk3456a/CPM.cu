@@ -214,6 +214,37 @@ def get_model_paths(path_prefix, config):
     
     return eagle_path, base_path, eagle_repo_id, base_repo_id
 
+def apply_minicpm4_yarn_config(llm, config):
+    """Apply MiniCPM4 YARN configuration to model config if enabled"""
+    if config['test_minicpm4'] and config['minicpm4_yarn']:
+        yarn_factors = [
+            0.9977997200264581, 1.014658295992452, 1.0349680404997148, 1.059429246056193,
+            1.0888815016813513, 1.1243301355211495, 1.166977103606075, 1.2182568066927284,
+            1.2798772354275727, 1.3538666751582975, 1.4426259039919596, 1.5489853358570191,
+            1.6762658237220625, 1.8283407612492941, 2.0096956085876183, 2.225478927469756,
+            2.481536379650452, 2.784415934557119, 3.1413289096347365, 3.560047844772632,
+            4.048719380066383, 4.752651957515948, 5.590913044973868, 6.584005926629993,
+            7.7532214876576155, 9.119754865903639, 10.704443927019176, 12.524994176518703,
+            14.59739595363613, 16.93214476166354, 19.53823297353041, 22.417131025031697,
+            25.568260840911098, 28.991144156566317, 32.68408069090375, 36.65174474170465,
+            40.90396065611201, 45.4664008671033, 50.37147343433591, 55.6804490772103,
+            61.470816952306556, 67.8622707390618, 75.00516023410414, 83.11898235973767,
+            92.50044360202462, 103.57086856690864, 116.9492274587385, 118.16074567836519,
+            119.18497548708795, 120.04810876261652, 120.77352815196981, 121.38182790207875,
+            121.89094985353891, 122.31638758099915, 122.6714244963338, 122.9673822552567,
+            123.21386397019609, 123.41898278254268, 123.58957065488238, 123.73136519024158,
+            123.84917421274221, 123.94701903496814, 124.02825801299717, 124.09569231686116
+        ]
+        
+        # Create or modify rope_scaling configuration
+        if not hasattr(llm.config, 'rope_scaling') or llm.config.rope_scaling is None:
+            llm.config.rope_scaling = {}
+            
+        llm.config.rope_scaling['rope_type'] = 'longrope'
+        llm.config.rope_scaling['long_factor'] = yarn_factors
+        llm.config.rope_scaling['short_factor'] = yarn_factors
+        print("Forcing MiniCPM4 YARN rope_scaling parameters")
+
 def create_model(eagle_path, base_path, config):
     """Create model instance based on configuration"""
     common_kwargs = {
@@ -231,7 +262,6 @@ def create_model(eagle_path, base_path, config):
         'use_decode_enter': config['use_decode_enter'],
         'temperature': config['temperature'],
         'random_seed': config['random_seed'],
-        'minicpm4_yarn': config['minicpm4_yarn']
     }
     
     eagle_kwargs = {
@@ -314,7 +344,7 @@ def make_input(tokenizer, args, prompt_content=None):
                 print(f"No valid content found, using default Chinese prompt")
                 prompt_content = "北京有哪些好玩的地方"
     
-    if not file_specified and not text_specified: # TODO: haystack need w/o chat template, may be a bug
+    if config['test_minicpm4'] and not file_specified and not text_specified: # TODO: haystack need w/o chat template, may be a bug
         prompt = prompt_content
     else:
         prompt = tokenizer.apply_chat_template([{"role": "user", "content": prompt_content}], tokenize=False, add_generation_prompt=True)
@@ -483,6 +513,10 @@ def main(args, config):
     
     # Initialize model
     llm.init_storage()
+    
+    # Apply MiniCPM4 YARN configuration if enabled
+    apply_minicpm4_yarn_config(llm, config)
+    
     if config['apply_eagle'] and config['frspec_vocab_size'] > 0:
         fr_path = f'{eagle_path}/freq_{config["frspec_vocab_size"]}.pt'
         if not os.path.exists(fr_path):

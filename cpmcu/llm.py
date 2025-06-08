@@ -36,7 +36,6 @@ class LLM(torch.nn.Module):
                  use_decode_enter: bool = False,
                  temperature: float = 0.0,
                  random_seed: int = None,
-                 minicpm4_yarn: bool = False,
     ):
         super().__init__()
 
@@ -49,7 +48,6 @@ class LLM(torch.nn.Module):
         self.use_enter = use_enter
         self.use_decode_enter = use_decode_enter
         self.temperature = temperature
-        self.minicpm4_yarn = minicpm4_yarn
 
         self.chunk_length = chunk_length
         # Flag for showing prefill progress (used in stream mode)
@@ -176,36 +174,6 @@ class LLM(torch.nn.Module):
     def load_from_hf(self):
         with torch.no_grad():
             self._load_from_ckpt(self.path)
-
-            # Override rope_scaling configuration when minicpm4_yarn=True
-            if self.minicpm4_yarn:
-                yarn_factors = [
-                    0.9977997200264581, 1.014658295992452, 1.0349680404997148, 1.059429246056193,
-                    1.0888815016813513, 1.1243301355211495, 1.166977103606075, 1.2182568066927284,
-                    1.2798772354275727, 1.3538666751582975, 1.4426259039919596, 1.5489853358570191,
-                    1.6762658237220625, 1.8283407612492941, 2.0096956085876183, 2.225478927469756,
-                    2.481536379650452, 2.784415934557119, 3.1413289096347365, 3.560047844772632,
-                    4.048719380066383, 4.752651957515948, 5.590913044973868, 6.584005926629993,
-                    7.7532214876576155, 9.119754865903639, 10.704443927019176, 12.524994176518703,
-                    14.59739595363613, 16.93214476166354, 19.53823297353041, 22.417131025031697,
-                    25.568260840911098, 28.991144156566317, 32.68408069090375, 36.65174474170465,
-                    40.90396065611201, 45.4664008671033, 50.37147343433591, 55.6804490772103,
-                    61.470816952306556, 67.8622707390618, 75.00516023410414, 83.11898235973767,
-                    92.50044360202462, 103.57086856690864, 116.9492274587385, 118.16074567836519,
-                    119.18497548708795, 120.04810876261652, 120.77352815196981, 121.38182790207875,
-                    121.89094985353891, 122.31638758099915, 122.6714244963338, 122.9673822552567,
-                    123.21386397019609, 123.41898278254268, 123.58957065488238, 123.73136519024158,
-                    123.84917421274221, 123.94701903496814, 124.02825801299717, 124.09569231686116
-                ]
-                
-                # Create or modify rope_scaling configuration
-                if not hasattr(self.config, 'rope_scaling') or self.config.rope_scaling is None:
-                    self.config.rope_scaling = {}
-                    
-                self.config.rope_scaling['rope_type'] = 'longrope'
-                self.config.rope_scaling['long_factor'] = yarn_factors
-                self.config.rope_scaling['short_factor'] = yarn_factors
-                print("Forcing MiniCPM4 YARN rope_scaling parameters")
 
             # rope
             if hasattr(self.config, "rope_scaling") and self.config.rope_scaling is not None:
