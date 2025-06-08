@@ -178,6 +178,8 @@ class LLM(torch.nn.Module):
             # rope
             if hasattr(self.config, "rope_scaling") and self.config.rope_scaling is not None:
                 rope_type = self.config.rope_scaling.get("rope_type", self.config.rope_scaling.get("type"))
+                if rope_type == "longrope" and not hasattr(self.config.rope_scaling, "factor"):
+                    self.config.rope_scaling["factor"] = 1.0
             else:
                 rope_type = "default"
             # TODO only support "default", "llama3" or "longrope" with long_factor=short_factor
