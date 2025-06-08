@@ -195,24 +195,24 @@ def get_model_paths(path_prefix, config):
     """Get model paths based on configuration"""
     if config['test_minicpm4']:
         if config['apply_eagle_quant']:
-            eagle_path = f"{path_prefix}/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu"
+            eagle_repo_id = f"{path_prefix}/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu"
         else:
-            eagle_path = f"{path_prefix}/MiniCPM4-8B-Eagle-FRSpec"
+            eagle_repo_id = f"{path_prefix}/MiniCPM4-8B-Eagle-FRSpec"
     else:
-        eagle_path = f"{path_prefix}/EAGLE-LLaMA3-Instruct-8B"
+        eagle_repo_id = f"{path_prefix}/EAGLE-LLaMA3-Instruct-8B"
     
     if not config['apply_quant']:
         if config['test_minicpm4']:
-            base_path = f"{path_prefix}/MiniCPM4-8B"
+            base_repo_id = f"{path_prefix}/MiniCPM4-8B"
         else:
-            base_path = f"{path_prefix}/Meta-Llama-3-8B-Instruct"
+            base_repo_id = f"{path_prefix}/Meta-Llama-3-8B-Instruct"
     else:
-        base_path = f"{path_prefix}/MiniCPM4-8B-marlin-cpmcu"
+        base_repo_id = f"{path_prefix}/MiniCPM4-8B-marlin-cpmcu"
 
-    eagle_path = check_or_download_model(eagle_path)
-    base_path = check_or_download_model(base_path)
+    eagle_path = check_or_download_model(eagle_repo_id)
+    base_path = check_or_download_model(base_repo_id)
     
-    return eagle_path, base_path
+    return eagle_path, base_path, eagle_repo_id, base_repo_id
 
 def create_model(eagle_path, base_path, config):
     """Create model instance based on configuration"""
@@ -473,7 +473,7 @@ def main(args, config):
     print_config(config, config['use_stream'])
     
     # Get model paths and create model
-    eagle_path, base_path = get_model_paths(args.path_prefix, config)
+    eagle_path, base_path, eagle_repo_id, base_repo_id = get_model_paths(args.path_prefix, config)
     tokenizer = AutoTokenizer.from_pretrained(base_path, trust_remote_code=True)
     llm = create_model(eagle_path, base_path, config)
     
@@ -485,18 +485,15 @@ def main(args, config):
     llm.init_storage()
     if config['apply_eagle'] and config['frspec_vocab_size'] > 0:
         fr_path = f'{eagle_path}/freq_{config["frspec_vocab_size"]}.pt'
-        if os.path.exists(fr_path):
-            with open(fr_path, 'rb') as f:
-                token_id_remap = torch.tensor(torch.load(f, weights_only=True), dtype=torch.int32, device="cpu")
-        else:
+        if not os.path.exists(fr_path):
             cache_dir = snapshot_download(
-                os.path.dirname(fr_path),
+                eagle_repo_id,
                 ignore_patterns=["*.bin", "*.safetensors"],
             )
-            file_path = os.path.join(
-                cache_dir, os.path.basename(fr_path)
-            )
-            token_id_remap = torch.tensor(torch.load(file_path, weights_only=True), dtype=torch.int32, device="cpu")
+            fr_path = os.path.join(cache_dir, f'freq_{config["frspec_vocab_size"]}.pt')
+        
+        with open(fr_path, 'rb') as f:
+            token_id_remap = torch.tensor(torch.load(f, weights_only=True), dtype=torch.int32, device="cpu")
         llm._load("token_id_remap", token_id_remap, cls="eagle")
     llm.load_from_hf()
     
