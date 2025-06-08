@@ -85,19 +85,19 @@ python3 tests/test_generate.py --prompt-file prompt.txt
 ```bash
 Generated text (streaming output):
 --------------------------------------------------
-Prefilling: 100.0% (14774/14774 tokens) @ 6675.6 tokens/s - Complete!
+Prefilling: 100.0% (106850/106850 tokens) @ 6565.3 tokens/s - Complete!
 
 <Generated Output HERE>
 ==================================================
 Stream Generation Summary:
 ==================================================
-Prefill length: 110290
-Prefill time: 16.86 s
-Prefill tokens/s: 6541.31
-Mean accept length: 2.38
-Decode length: 216
-Decode time: 1.47 s
-Decode tokens/s: 146.95
+Prefill length: 106850
+Prefill time: 16.36 s
+Prefill tokens/s: 6530.77
+Mean accept length: 2.50
+Decode length: 118
+Decode time: 0.76 s
+Decode tokens/s: 154.59
 ```
 
 其中：
