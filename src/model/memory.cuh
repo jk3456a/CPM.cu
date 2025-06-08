@@ -6,7 +6,7 @@
 #include <vector>
 #endif
 
-#define ALIGN_SIZE 16
+#define ALIGN_SIZE 256
 
 // TODO: refactor this for better encapsulation
 struct Memory {
@@ -97,7 +97,7 @@ struct Memory {
     void* allocate_for_model(size_t size) {
         uint8_t* ret = memory_pool + model_offset;
         model_offset += size;
-        model_offset = ROUND_UP(model_offset, ALIGN_SIZE); // Align to 16 bytes
+        model_offset = ROUND_UP(model_offset, ALIGN_SIZE);
         if (model_offset > this->memory_limit) {
             print_stack_trace(5);
             fprintf(stderr, "Error: memory limit exceeded, offset: %ld, size: %ld, memory_limit: %ld\n\n", model_offset, size, this->memory_limit);
@@ -113,7 +113,7 @@ struct Memory {
         }
         *ptr = memory_pool + offset;
         offset += size;
-        offset = ROUND_UP(offset, ALIGN_SIZE); // Align to 16 bytes
+        offset = ROUND_UP(offset, ALIGN_SIZE);
         if (offset > this->memory_limit) {
             print_stack_trace(5);
             fprintf(stderr, "Error: memory limit exceeded, offset: %ld, size: %ld, memory_limit: %ld\n\n", offset, size, this->memory_limit);
