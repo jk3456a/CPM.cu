@@ -1,3 +1,4 @@
+#include "perf.cuh"
 #include "utils.cuh"
 #include "signal_handler.cuh"
 
@@ -15,6 +16,7 @@ void init_resources() {
   
   // 初始化signal处理器
   init_signal_handlers();
+  perf_init();
  
   cudaCheck(cudaStreamCreate(&calc_stream.stream));
   cublasCheck(cublasCreate(&calc_stream.cublas_handle));

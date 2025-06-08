@@ -98,10 +98,10 @@ struct MiniCPM4EagleImpl : Model {
             lm_head = this->model->lm_head;
         }
 
-        assert(topk_per_iter <= this->tree_size-1);
+        assert(this->topk_per_iter <= this->tree_size-1);
 
-        topk_func = new functions::TopK<T>(this->frspec_vocab_size, topk_per_iter);
-        topk_func_2 = new functions::TopK<T>(total_tried, this->tree_size-1);
+        topk_func = new functions::TopK<T>(this->frspec_vocab_size, this->topk_per_iter);
+        topk_func_2 = new functions::TopK<T>(this->total_tried, this->tree_size-1);
     }
 
     void init_weight_ptr(Memory* memory) {
@@ -156,7 +156,7 @@ struct MiniCPM4EagleImpl : Model {
         cudaMallocHost(&eagle_original_length, sizeof(int32_t));
 
         offset = topk_func->init_output_ptr(memory, this->topk_per_iter, offset);
-        offset = topk_func_2->init_output_ptr(memory, 1, offset);
+        offset = topk_func_2->init_output_ptr(memory, 1*16, offset);
 
         offset = memory->allocate((void**)&prev_hidden_state, offset, num_tokens * this->model->hidden_size * sizeof(T));
         offset = memory->allocate((void**)&prev_embed, offset, num_tokens * this->model->hidden_size * sizeof(T));

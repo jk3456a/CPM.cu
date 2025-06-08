@@ -259,6 +259,8 @@ public:
         int dim = -1,
         int top = -1
     ) {
+        assert(dim == -1 || dim <= this->dim);
+        assert(top == -1 || top <= this->top);
         if (dim == -1) dim = this->dim;
         if (top == -1) top = this->top;
         bitonic_topk<T>(

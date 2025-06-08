@@ -201,7 +201,6 @@ void init_w4a16_gptq_marlin_base_model(
     float scale_residual
 ) {
     init_resources();
-    perf_init();
 
     DTYPE_SWITCH(torch_dtype, [&] {
         model = new W4A16GPTQMarlinModelImpl<elem_type>(
