@@ -71,12 +71,12 @@ __global__ void maxpooling_kernel(
     int k_len,
     int out_len,
     int cache_len,
+    int init_blocks,
+    int local_blocks,
     int kernel_size,
     int stride,
     int padding,
-    int block_size,
-    int local_blocks,
-    int init_blocks
+    int block_size
 ) {
     int bidh = blockIdx.y;
     int bidq = blockIdx.x;
@@ -173,7 +173,7 @@ void maxpooling_func(
 ) {
     out_len = (cache_len + block_size - 1) / block_size;
     maxpooling_kernel<<<dim3(q_len, num_heads), 256, 0, stream>>>(
-        input, output, num_heads, q_len, q_round, k_len, out_len, cache_len, kernel_size, stride, padding, block_size, local_blocks, init_blocks
+        input, output, num_heads, q_len, q_round, k_len, out_len, cache_len, init_blocks, local_blocks, kernel_size, stride, padding, block_size
     );
 } 
 
