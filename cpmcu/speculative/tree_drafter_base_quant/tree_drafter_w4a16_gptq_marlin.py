@@ -25,7 +25,7 @@ class W4A16GPTQMarlinLLM_with_tree_drafter(W4A16GPTQMarlinLLM):
         self.tree_draft_ids = torch.empty((tree_size), dtype=torch.int32, device="cuda")
         self.tree_position_ids = torch.empty((tree_size), dtype=torch.int32, device="cuda")
         self.tree_gt_ids = torch.empty((tree_size), dtype=torch.int32, device="cuda")
-        self.tree_attn_mask = torch.empty((tree_size), dtype=torch.uint64, device="cuda")
+        self.tree_attn_mask = torch.empty((tree_size), dtype=torch.int64, device="cuda")
         self.tree_parent = torch.empty((tree_size), dtype=torch.int32, device="cuda")
         self.tree_position_ids = torch.empty((tree_size), dtype=torch.int32, device="cuda")
         self.temperature = temperature

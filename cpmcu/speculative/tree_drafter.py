@@ -8,7 +8,7 @@ from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 
 def pack_mask(mask_2d):
     '''
-    for static masks, pack them into a uint64 per row
+    for static masks, pack them into a int64 per row
     '''
     mask_2d_packed = torch.zeros((mask_2d.shape[0], 2), dtype=torch.uint32, device="cuda")
     for i in range(mask_2d.shape[0]):
@@ -21,7 +21,7 @@ def pack_mask(mask_2d):
                 mask_2 |= (mask_2d[i][j].item() << (j - 32))
         mask_2d_packed[i][0] = mask_1
         mask_2d_packed[i][1] = mask_2
-    mask_2d_packed = mask_2d_packed.view(torch.uint64).view(-1)
+    mask_2d_packed = mask_2d_packed.view(torch.int64).view(-1)
     return mask_2d_packed
 
 class LLM_with_tree_drafter(LLM):
@@ -41,7 +41,7 @@ class LLM_with_tree_drafter(LLM):
         self.tree_draft_ids = torch.empty((tree_size), dtype=torch.int32, device="cuda")
         self.tree_position_ids = torch.empty((tree_size), dtype=torch.int32, device="cuda")
         self.tree_gt_ids = torch.empty((tree_size), dtype=torch.int32, device="cuda")
-        self.tree_attn_mask = torch.empty((tree_size), dtype=torch.uint64, device="cuda")
+        self.tree_attn_mask = torch.empty((tree_size), dtype=torch.int64, device="cuda")
         self.tree_parent = torch.empty((tree_size), dtype=torch.int32, device="cuda")
         self.tree_position_ids = torch.empty((tree_size), dtype=torch.int32, device="cuda")
 
