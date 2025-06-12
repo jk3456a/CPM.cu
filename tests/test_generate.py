@@ -62,7 +62,7 @@ def create_argument_parser():
                         help='Path to prompt file (default: None)')
     parser.add_argument('--prompt-text', '--prompt_text', type=str, default=None,
                         help='Direct prompt text (default: None)')
-    parser.add_argument('--prompt-haystack', '--prompt_haystack', type=int, default=15,
+    parser.add_argument('--prompt-haystack', '--prompt_haystack', type=int,
                         help='Generate haystack prompt with specified length in thousands (e.g., 120 for 120k tokens)')
 
     # Model configuration boolean arguments
@@ -302,56 +302,51 @@ def make_input(tokenizer, args, prompt_content=None):
         query = "Now, give me the exact number of the pass key. The pass key is "
         return head + before + needle + after + query
     
+    haystack_specified = '--prompt-haystack' in sys.argv or '--prompt_haystack' in sys.argv
     if prompt_content is None:
-        # Check if file or text was specified
+        # Check command line arguments once
         file_specified = args.prompt_file is not None
         text_specified = args.prompt_text is not None
         
-        if not file_specified and not text_specified:
-            # Case 1: Neither file nor text specified, use haystack with default value
-            print(f"Using haystack prompt with {args.prompt_haystack}k tokens (default)")
+        if haystack_specified and not file_specified and not text_specified:
+            # Use haystack prompt
+            print(f"Using haystack prompt with {args.prompt_haystack}k tokens (explicitly requested)")
             prompt_content = make_haystack_prompt(681725493, args.prompt_haystack)
         else:
-            # Case 2 & 3: At least one of file or text specified, ignore haystack
+            # Handle file and text combination
             prompt_content = ""
             
             # Load from file if specified
             if file_specified:
                 try:
                     with open(args.prompt_file, 'r', encoding='utf-8') as f:
-                        file_content = f.read().strip()
-                    prompt_content += file_content
+                        prompt_content = f.read().strip()
                     print(f"Loaded prompt from file: {args.prompt_file}")
                 except FileNotFoundError:
                     print(f"Warning: {args.prompt_file} not found, skipping file content")
                 except Exception as e:
                     print(f"Error reading {args.prompt_file}: {e}, skipping file content")
             
-            # Append text if specified
+            # Add prompt text (append if file content exists, otherwise use as main content)
             if text_specified:
-                if file_specified and prompt_content:
-                    # Case 3: Both specified, append text to file content
+                if prompt_content:
                     prompt_content += "\n" + args.prompt_text
                     print(f"Appended prompt text to file content")
                 else:
-                    # Case 2: Only text specified
                     prompt_content = args.prompt_text
-                    print(f"Using direct prompt text input")
-            
-            # Fallback if no content was loaded
-            if not prompt_content:
-                print(f"No valid content found, using default Chinese prompt")
-                prompt_content = "北京有哪些好玩的地方"
+                    print(f"Using prompt text: '{args.prompt_text}'")
+            elif not prompt_content:
+                # No prompt specified at all, use default
+                prompt_content = "Who are you?"
+                print(f"No prompt specified, using default: '{prompt_content}'")
     
-    if config['test_minicpm4'] and not file_specified and not text_specified: # TODO: haystack need w/o chat template, may be a bug
+    if config['test_minicpm4'] and haystack_specified: # TODO: haystack need w/o chat template, may be a bug
         prompt = prompt_content
     else:
         prompt = tokenizer.apply_chat_template([{"role": "user", "content": prompt_content}], tokenize=False, add_generation_prompt=True)
     input_ids = tokenizer(prompt, return_tensors="pt").input_ids.cuda().int()
     
     print(f"Input token count: {input_ids.shape[1]}")
-    if input_ids.shape[1] <= 100:  # Only show input_ids for short prompts
-        print(f"Input_ids: {input_ids}")
     
     return input_ids
 

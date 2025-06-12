@@ -219,4 +219,12 @@ fr_index
 
 # Prompt Files
 tests/*.txt
-prompt.txt
+prompt*.txt
+
+# Backups
+*.bak
+*.backup
+*.old
+*.orig
+*.rej
+*.swp
