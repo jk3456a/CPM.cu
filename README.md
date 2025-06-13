@@ -47,7 +47,7 @@ https://github.com/user-attachments/assets/ab36fd7a-485b-4707-b72f-b80b5c43d024
 ```bash
 git clone https://github.com/OpenBMB/CPM.cu.git --recursive
 cd CPM.cu
-python3 setup.py install
+pip install .
 ```
 
 <div id="modelweights"></div>
@@ -122,8 +122,21 @@ CPM.cu/
 ```
 
 ## More
-We provide a word frequency generation script for FR-Spec, located at "scripts/fr_spec/gen_fr_index.py". You can run it as follows:
+### Incremental Compilation
+If you are a developer and want to perform incremental compilation, first initialize the environment:
+```bash
+git clone https://github.com/OpenBMB/CPM.cu.git --recursive
+cd CPM.cu
+pip install -e .
 ```
+Then, use the following command for incremental compilation:
+```bash
+python setup.py build_ext --inplace
+```
+
+### Word Frequency File Generation
+We provide a word frequency generation script for FR-Spec, located at "scripts/fr_spec/gen_fr_index.py". You can run it as follows:
+```bash
 python scripts/fr_spec/gen_fr_index.py --model_path <your_model_path>
 ```
 You can modify the code to use your own dataset. If your task is in a specific vertical domain, constructing word frequencies tailored to that domain can significantly improve processing speed.

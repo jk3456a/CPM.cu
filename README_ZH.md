@@ -47,7 +47,7 @@ https://github.com/user-attachments/assets/ab36fd7a-485b-4707-b72f-b80b5c43d024
 ```bash
 git clone https://github.com/OpenBMB/cpm.cu.git --recursive
 cd cpm.cu
-python3 setup.py install
+pip install .
 ```
 
 <div id="modelweights"></div>
@@ -121,8 +121,21 @@ cpm.cu/
 └── ...
 ```
 ## 更多
-我们提供了FR-Spec的词频生成脚本，位于"scripts/fr_spec/gen_fr_index.py"，运行方式如下：
+### 增量编译
+如果你是一个开发者，想增量编译，先初始化：
+```bash
+git clone https://github.com/OpenBMB/CPM.cu.git --recursive
+cd CPM.cu
+pip install -e .
 ```
+然后使用下述指令即可增量编译：
+```bash
+python setup.py build_ext --inplace
+```
+
+### 词频文件生成
+我们提供了FR-Spec的词频生成脚本，位于"scripts/fr_spec/gen_fr_index.py"，运行方式如下：
+```bash
 python scripts/fr_spec/gen_fr_index.py --model_path <your modelpath>
 ```
 你可以修改代码使用自己的数据集。如果你的任务是特定垂直领域，根据领域构造词频对速度提升有显著收益。
