@@ -5,34 +5,6 @@ from setuptools import setup, find_packages
 
 this_dir = os.path.dirname(os.path.abspath(__file__))
 
-def check_dependencies():
-    """Check and return missing dependencies"""
-    dependencies = {
-        'torch': 'torch',
-        'ninja': 'ninja', 
-        'psutil': 'psutil'
-    }
-    
-    missing = []
-    available = {}
-    
-    for name, package in dependencies.items():
-        try:
-            __import__(name)
-            available[name] = True
-        except ImportError:
-            available[name] = False
-            missing.append(package)
-    
-    # Always check pybind11 separately since it's always required
-    try:
-        __import__('pybind11')
-        available['pybind11'] = True
-    except ImportError:
-        available['pybind11'] = False
-    
-    return missing, available
-
 def detect_cuda_arch():
     """Detect CUDA architecture from environment or devices"""
     # 1. Check environment variable first
@@ -139,7 +111,7 @@ def get_compile_config():
 
 def append_nvcc_threads(nvcc_args):
     """Add NVCC thread configuration"""
-    nvcc_threads = os.getenv("NVCC_THREADS") or "16"
+    nvcc_threads = os.getenv("NVCC_THREADS") or "4"
     return nvcc_args + ["--threads", nvcc_threads]
 
 def get_sources_and_headers(dtype_set):
@@ -177,7 +149,7 @@ def get_sources_and_headers(dtype_set):
     
     return sources, headers
 
-def create_build_extension(ninja_available):
+def create_build_extension():
     """Create custom build extension class"""
     try:
         from torch.utils.cpp_extension import BuildExtension
@@ -186,8 +158,19 @@ def create_build_extension(ninja_available):
         
     class NinjaBuildExtension(BuildExtension):
         def __init__(self, *args, **kwargs):
-            if ninja_available:
+            # Check if ninja is available
+            try:
+                import ninja
                 kwargs.setdefault('use_ninja', True)
+                os.environ["USE_NINJA"] = "1"
+                print("Ninja build system enabled for faster compilation")
+            except ImportError:
+                print("ERROR: Ninja build system is required but not found.")
+                print("Please install ninja manually using one of the following methods:")
+                print("  1. pip install ninja")
+                print("  2. conda install ninja")
+                print("  3. System package manager (e.g., apt install ninja-build)")
+                raise RuntimeError("Ninja is required for compilation but not available. Please install ninja and try again.")
             
             # Set MAX_JOBS if not already set
             if not os.environ.get("MAX_JOBS"):
@@ -212,105 +195,61 @@ def create_build_extension(ninja_available):
 
 def build_cuda_extension():
     """Build CUDA extension if possible"""
-    # Check dependencies
-    missing_deps, available_deps = check_dependencies()
-    setup_requires_base = ['pybind11'] + missing_deps
-    print(f"Setup requires: {setup_requires_base}")
+    from torch.utils.cpp_extension import CUDAExtension
     
-    try:
-        from torch.utils.cpp_extension import CUDAExtension
-        
-        # Detect CUDA architecture
-        arch_list = detect_cuda_arch()
-        if not arch_list:
-            print("ERROR: No valid CUDA architectures detected.")
-            print("To build CUDA extensions, either:")
-            print("1. Set CPMCU_CUDA_ARCH environment variable (e.g., export CPMCU_CUDA_ARCH=80)")
-            print("2. Ensure CUDA devices are available and PyTorch can detect them")
-            raise RuntimeError("Cannot determine CUDA architecture for compilation")
-        
-        # Check ninja requirement
-        ninja_available = available_deps['ninja']
-        if not ninja_available:
-            print("ERROR: Ninja build system is required but not found.")
-            print("Please install ninja manually using one of the following methods:")
-            print("  1. pip install ninja")
-            print("  2. conda install ninja")
-            print("  3. System package manager (e.g., apt install ninja-build)")
-            raise RuntimeError("Ninja is required for compilation but not available. Please install ninja and try again.")
-        
-        os.environ["USE_NINJA"] = "1"
-        print("Ninja build system enabled for faster compilation")
-        
-        # Get compilation configuration
-        cxx_args, nvcc_args, link_args, dtype_set = get_compile_config()
-        sources, headers = get_sources_and_headers(dtype_set)
-        
-        # Generate architecture-specific arguments
-        gencode_args = []
-        arch_defines = []
-        for arch in arch_list:
-            gencode_args.extend(["-gencode", f"arch=compute_{arch},code=sm_{arch}"])
-            arch_defines.append(f"-D_ARCH{arch}")
-        
-        print(f"Using CUDA architecture compile flags: {arch_list}")
-        
-        # Create extension
-        ext_modules = [
-            CUDAExtension(
-                name='cpmcu.C',
-                sources=sources,
-                libraries=["cublas", "dl"],
-                depends=headers,
-                extra_compile_args={
-                    "cxx": cxx_args,
-                    "nvcc": append_nvcc_threads(nvcc_args + gencode_args + arch_defines + ["-MMD", "-MP"]),
-                },
-                extra_link_args=link_args,
-                include_dirs=[
-                    f"{this_dir}/src/flash_attn",
-                    f"{this_dir}/src/flash_attn/src", 
-                    f"{this_dir}/src/cutlass/include",
-                    f"{this_dir}/src/",
-                ],
-            )
-        ]
-        
-        # Create build extension class
-        build_ext_class = create_build_extension(ninja_available)
-        cmdclass = {'build_ext': build_ext_class} if build_ext_class else {}
-        
-        # Remove ninja from setup_requires if we successfully installed it
-        final_setup_requires = [dep for dep in setup_requires_base if dep != 'ninja' or not ninja_available]
-        
-        return ext_modules, cmdclass, final_setup_requires
-        
-    except Exception as e:
-        print(f"Error: Unable to configure CUDA extension module: {e}")
-        raise
+    # Detect CUDA architecture
+    arch_list = detect_cuda_arch()
+    if not arch_list:
+        print("ERROR: No valid CUDA architectures detected.")
+        print("To build CUDA extensions, either:")
+        print("1. Set CPMCU_CUDA_ARCH environment variable (e.g., export CPMCU_CUDA_ARCH=80)")
+        print("2. Ensure CUDA devices are available and PyTorch can detect them")
+        raise RuntimeError("Cannot determine CUDA architecture for compilation")
+    
+    # Get compilation configuration
+    cxx_args, nvcc_args, link_args, dtype_set = get_compile_config()
+    sources, headers = get_sources_and_headers(dtype_set)
+    
+    # Generate architecture-specific arguments
+    gencode_args = []
+    arch_defines = []
+    for arch in arch_list:
+        gencode_args.extend(["-gencode", f"arch=compute_{arch},code=sm_{arch}"])
+        arch_defines.append(f"-D_ARCH{arch}")
+    
+    print(f"Using CUDA architecture compile flags: {arch_list}")
+    
+    # Create extension
+    ext_modules = [
+        CUDAExtension(
+            name='cpmcu.C',
+            sources=sources,
+            libraries=["cublas", "dl"],
+            depends=headers,
+            extra_compile_args={
+                "cxx": cxx_args,
+                "nvcc": append_nvcc_threads(nvcc_args + gencode_args + arch_defines + ["-MMD", "-MP"]),
+            },
+            extra_link_args=link_args,
+            include_dirs=[
+                f"{this_dir}/src/flash_attn",
+                f"{this_dir}/src/flash_attn/src", 
+                f"{this_dir}/src/cutlass/include",
+                f"{this_dir}/src/",
+            ],
+        )
+    ]
+    
+    # Create build extension class
+    build_ext_class = create_build_extension()
+    cmdclass = {'build_ext': build_ext_class} if build_ext_class else {}
+    
+    return ext_modules, cmdclass
 
 # Main setup execution
-ext_modules, cmdclass, setup_requires = build_cuda_extension()
+ext_modules, cmdclass = build_cuda_extension()
 
 setup(
-    name='cpmcu',
-    version='1.0.0',
-    author_email="acha131441373@gmail.com",
-    description="cpm cuda implementation",
-    packages=find_packages(),
-    setup_requires=setup_requires,
-    install_requires=[
-        "transformers==4.46.2",
-        "accelerate==0.26.0", 
-        "datasets",
-        "fschat",
-        "openai",
-        "anthropic",
-        "human_eval",
-        "zstandard",
-        "tree_sitter",
-        "tree-sitter-python"
-    ],
     ext_modules=ext_modules,
     cmdclass=cmdclass,
 ) 

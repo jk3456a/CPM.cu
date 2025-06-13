@@ -1,0 +1,58 @@
+[build-system]
+requires = [
+    "setuptools>=77.0.0",
+    "wheel",
+    "torch>=2.0.0",
+    "pybind11>=2.10.0",
+    "ninja>=1.10.0",
+    "psutil>=5.0.0"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cpmcu"
+version = "1.0.0"
+description = "cpm cuda implementation"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [
+    {email = "acha131441373@gmail.com"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: C++",
+    "Programming Language :: CUDA",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "transformers==4.46.2",
+    "accelerate==0.26.0",
+    "datasets",
+    "fschat",
+    "openai",
+    "anthropic",
+    "human_eval",
+    "zstandard",
+    "tree_sitter",
+    "tree-sitter-python"
+]
+
+[project.urls]
+Homepage = "https://github.com/OpenBMB/CPM.cu"
+Repository = "https://github.com/OpenBMB/CPM.cu"
+Issues = "https://github.com/OpenBMB/CPM.cu/issues"
+
+[tool.setuptools]
+packages = ["cpmcu"]
+
+[tool.setuptools.package-data]
+"*" = ["*.cu", "*.h", "*.hpp", "*.cuh"] 
