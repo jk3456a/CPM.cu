@@ -5,6 +5,82 @@ from setuptools import setup, find_packages
 
 this_dir = os.path.dirname(os.path.abspath(__file__))
 
+def print_build_config_help():
+    """Print available environment variables for build configuration"""
+    help_text = """
+=== CPM.cu Build Configuration ===
+
+Available environment variables to customize the build:
+
+COMPILATION CONTROL:
+  CPMCU_DEBUG=1          Enable debug mode (default: 0)
+                         - Adds debug symbols (-g3)
+                         - Disables optimization (-O0)
+                         - Enables debug macros
+                         
+  CPMCU_PERF=1           Enable performance monitoring (default: 0)
+                         - Adds -DENABLE_PERF flag
+                         
+  CPMCU_DTYPE=fp16,bf16  Data types to support (default: fp16)
+                         - Options: fp16, bf16, or fp16,bf16
+                         - Controls which kernels are compiled
+
+CUDA ARCHITECTURE:
+  CPMCU_CUDA_ARCH=80,86  Target CUDA compute capabilities (auto-detected if not set)
+                         - Example: 80 for A100, 86 for RTX 3090
+                         - Multiple values: 80,86 for mixed GPU environments
+
+EXAMPLES:
+  # Debug build with both data types:
+  export CPMCU_DEBUG=1 CPMCU_DTYPE=fp16,bf16
+  python setup.py build_ext --inplace
+
+=======================================
+"""
+    print(help_text)
+
+def show_current_config():
+    """Show current build configuration"""
+    print("=== Build Configuration ===")
+    
+    config_items = []
+    
+    # CUDA Architecture
+    env_arch = os.getenv("CPMCU_CUDA_ARCH")
+    if env_arch:
+        config_items.append(f"CUDA Arch: {env_arch}")
+    else:
+        config_items.append("CUDA Arch: Auto-detect")
+    
+    # Build mode
+    debug_mode = os.getenv("CPMCU_DEBUG", "0").lower() in ("1", "true", "yes")
+    config_items.append(f"Mode: {'Debug' if debug_mode else 'Release'}")
+    
+    # Data types
+    dtype_env = os.getenv("CPMCU_DTYPE", "fp16")
+    config_items.append(f"Data Types: {dtype_env.upper()}")
+    
+    # Performance monitoring
+    perf_mode = os.getenv("CPMCU_PERF", "0").lower() in ("1", "true", "yes")
+    config_items.append(f"Performance Monitoring: {'Enabled' if perf_mode else 'Disabled'}")
+    
+    # Compilation performance
+    max_jobs = os.getenv("MAX_JOBS")
+    if max_jobs:
+        config_items.append(f"Max Jobs: {max_jobs}")
+    
+    nvcc_threads = os.getenv("NVCC_THREADS")
+    if nvcc_threads and nvcc_threads != "8":
+        config_items.append(f"NVCC Threads: {nvcc_threads}")
+    
+    print(" | ".join(config_items))
+    print("============================")
+
+# Check for help request
+if "--help-config" in sys.argv:
+    print_build_config_help()
+    sys.exit(0)
+
 def detect_cuda_arch():
     """Detect CUDA architecture from environment or devices"""
     # 1. Check environment variable first
@@ -72,16 +148,6 @@ def get_compile_config():
     if "bf16" in dtype_set:
         dtype_defines.append("-DENABLE_DTYPE_BF16")
     
-    # Print configuration
-    if len(dtype_set) == 1:
-        print(f"Compiling with {list(dtype_set)[0].upper()} support only")
-    else:
-        dtype_names = [dtype.upper() for dtype in sorted(dtype_set)]
-        print(f"Compiling with {' and '.join(dtype_names)} support")
-    
-    print(f"{'Debug' if debug_mode else 'Release'} mode enabled")
-    print(f"Performance monitoring {'enabled' if perf_mode else 'disabled'} (CPMCU_PERF={int(perf_mode)})")
-    
     # Base arguments
     common_args = ["-std=c++17"] + dtype_defines
     nvcc_base = common_args + [
@@ -108,11 +174,6 @@ def get_compile_config():
         nvcc_args.append("-DENABLE_PERF")
     
     return cxx_args, nvcc_args, link_args, dtype_set
-
-def append_nvcc_threads(nvcc_args):
-    """Add NVCC thread configuration"""
-    nvcc_threads = os.getenv("NVCC_THREADS") or "4"
-    return nvcc_args + ["--threads", nvcc_threads]
 
 def get_sources_and_headers(dtype_set):
     """Get source files and headers based on enabled data types"""
@@ -197,6 +258,9 @@ def build_cuda_extension():
     """Build CUDA extension if possible"""
     from torch.utils.cpp_extension import CUDAExtension
     
+    # Show current build configuration
+    show_current_config()
+    
     # Detect CUDA architecture
     arch_list = detect_cuda_arch()
     if not arch_list:
@@ -219,6 +283,10 @@ def build_cuda_extension():
     
     print(f"Using CUDA architecture compile flags: {arch_list}")
     
+    # Add NVCC thread configuration
+    nvcc_threads = os.getenv("NVCC_THREADS") or "8"
+    final_nvcc_args = nvcc_args + gencode_args + arch_defines + ["-MMD", "-MP", "--threads", nvcc_threads]
+    
     # Create extension
     ext_modules = [
         CUDAExtension(
@@ -228,7 +296,7 @@ def build_cuda_extension():
             depends=headers,
             extra_compile_args={
                 "cxx": cxx_args,
-                "nvcc": append_nvcc_threads(nvcc_args + gencode_args + arch_defines + ["-MMD", "-MP"]),
+                "nvcc": final_nvcc_args,
             },
             extra_link_args=link_args,
             include_dirs=[
@@ -250,6 +318,8 @@ def build_cuda_extension():
 ext_modules, cmdclass = build_cuda_extension()
 
 setup(
+    packages=find_packages(),
     ext_modules=ext_modules,
     cmdclass=cmdclass,
+    zip_safe=False,
 ) 

@@ -121,16 +121,20 @@ cpm.cu/
 └── ...
 ```
 ## 更多
-### 增量编译
-如果你是一个开发者，想增量编译，先初始化：
+### 开发者手册
+如果你是一个开发者，希望*增量编译*，先初始化：
 ```bash
 git clone https://github.com/OpenBMB/CPM.cu.git --recursive
 cd CPM.cu
 pip install -e .
 ```
-然后使用下述指令即可增量编译：
+然后使用下述指令即可增量编译（你可能需要手动安装ninja等）：
 ```bash
 python setup.py build_ext --inplace
+```
+我们支持一些用于调试和性能分析的环境变量，你可以通过下述指令获得相关信息：
+```bash
+python setup.py --help-config
 ```
 
 ### 词频文件生成

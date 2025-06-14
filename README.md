@@ -122,16 +122,20 @@ CPM.cu/
 ```
 
 ## More
-### Incremental Compilation
-If you are a developer and want to perform incremental compilation, first initialize the environment:
+### For Developer
+If you are a developer and want to perform *incremental compilation*, first initialize the environment:
 ```bash
 git clone https://github.com/OpenBMB/CPM.cu.git --recursive
 cd CPM.cu
 pip install -e .
 ```
-Then, use the following command for incremental compilation:
+Then, use the following command for incremental compilation (you may need to manually install tools like ninja):
 ```bash
 python setup.py build_ext --inplace
+```
+We support some environment variables for debugging and performance analysis. You can obtain related information with the following command:
+```bash
+python setup.py --help-config
 ```
 
 ### Word Frequency File Generation
