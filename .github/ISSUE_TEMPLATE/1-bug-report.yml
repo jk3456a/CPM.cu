@@ -8,9 +8,9 @@ body:
   attributes:
     label: Checklist
     options:
-    - label: 1. I have searched related issues.
-    - label: 2. The bug has not been fixed in the latest version.
-    - label: 3. Bug-related environment info are given.
+    - label: I have searched related issues.
+    - label: The bug has not been fixed in the latest version.
+    - label: Bug-related environment info are given.
 - type: textarea
   attributes:
     label: Describe the bug
