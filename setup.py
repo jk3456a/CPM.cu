@@ -180,32 +180,60 @@ def check_dependencies():
 def print_build_config_help():
     """Print available environment variables for build configuration"""
     help_text = """
-=== CPM.cu Build Configuration ===
+=== CPM.cu Build Configuration Help ===
 
-Available environment variables to customize the build:
+This document describes all environment variables that can be used to customize
+the CPM.cu build process. Set these variables before running setup.py.
 
-COMPILATION CONTROL:
-  CPMCU_DEBUG=1          Enable debug mode (default: 0)
-                         - Adds debug symbols (-g3)
-                         - Disables optimization (-O0)
-                         - Enables debug macros
-                         
-  CPMCU_PERF=1           Enable performance monitoring (default: 0)
-                         - Adds -DENABLE_PERF flag
-                         
-  CPMCU_DTYPE=fp16,bf16  Data types to support (default: fp16)
-                         - Options: fp16, bf16, or fp16,bf16
-                         - Controls which kernels are compiled
+CUDA ARCHITECTURE CONFIGURATION:
+  CPMCU_CUDA_ARCH=80,86    Target CUDA compute capabilities (auto-detected if not set)
+                           - Supported range: 80-120 (Ampere and newer generations)
+                           - Single arch: CPMCU_CUDA_ARCH=80
+                           - Multiple arch: CPMCU_CUDA_ARCH=80,86,87
+                           - Common values:
+                             * 80: A100, A800
+                             * 86: RTX 3090, RTX 3080, RTX 3070
+                             * 87: Jetson Orin
+                             * 89: RTX 4090, RTX 4080
+                             * 90: H100, H800
+                           - If not set, will auto-detect from available GPU devices
+                           - Required if building without local GPU access
 
-CUDA ARCHITECTURE:
-  CPMCU_CUDA_ARCH=80,86  Target CUDA compute capabilities (auto-detected if not set)
-                         - Example: 80 for A100, 86 for RTX 3090
-                         - Multiple values: 80,86 for mixed GPU environments
+COMPILATION MODE CONTROL:
+  CPMCU_DEBUG=1            Enable debug build (default: 0)
+                           - Adds debug symbols (-g3, -lineinfo)
+                           - Disables optimization (-O0)
+                           - Enables debug macros (-DDEBUG, -DCUDA_DEBUG)
+                           - Disables memory pool (-DDISABLE_MEMPOOL)
+                           - Adds frame pointer for better debugging
+                           - Values: 1/true/yes (enable), 0/false/no (disable)
 
-EXAMPLES:
-  # Debug build with both data types:
-  export CPMCU_DEBUG=1 CPMCU_DTYPE=fp16,bf16
-  python setup.py build_ext --inplace
+  CPMCU_PERF=1             Enable performance monitoring (default: 0)
+                           - Adds -DENABLE_PERF compilation flag
+                           - Enables performance measurement code
+                           - Values: 1/true/yes (enable), 0/false/no (disable)
+
+DATA TYPE SUPPORT:
+  CPMCU_DTYPE=fp16,bf16    Data types to compile support for (default: fp16)
+                           - fp16: Half precision (16-bit floating point)
+                           - bf16: Brain floating point (16-bit)
+                           - Affects compilation time and binary size
+
+COMMON BUILD SCENARIOS:
+
+  1. Standard build (auto-detect everything):
+     pip install .
+
+  2. Debug build with both data types:
+     CPMCU_DEBUG=1 CPMCU_DTYPE=fp16,bf16 pip install .
+
+  3. Build for specific GPU without local access:
+     CPMCU_CUDA_ARCH=80 pip install . # For A100
+
+  4. Performance monitoring build:
+     CPMCU_PERF=1 pip install .
+
+For more information, visit: https://github.com/OpenBMB/CPM.cu
 
 =======================================
 """
