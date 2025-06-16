@@ -47,8 +47,7 @@ Homepage = "https://github.com/OpenBMB/CPM.cu"
 Repository = "https://github.com/OpenBMB/CPM.cu"
 Issues = "https://github.com/OpenBMB/CPM.cu/issues"
 
-[tool.setuptools]
-packages = ["cpmcu"]
+[tool.setuptools.packages.find]
 
 [tool.setuptools.package-data]
 "*" = ["*.cu", "*.h", "*.hpp", "*.cuh"] 
