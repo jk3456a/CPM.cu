@@ -44,6 +44,8 @@ https://github.com/user-attachments/assets/ab36fd7a-485b-4707-b72f-b80b5c43d024
 
 ### Install from source
 
+This library's build depends on torch and ninja. Please install both before installing this library. If you encounter installation issues, please follow the error messages to resolve them or create a GitHub issue.
+
 ```bash
 git clone https://github.com/OpenBMB/CPM.cu.git --recursive
 cd CPM.cu
@@ -68,8 +70,6 @@ python3 tests/test_generate.py --prompt-file <your prompt file>
 
 If you don't ​​specify​​ the model path, the scripts will load the model from ​​OpenBMB's Hugging Face repository​​.
 If you want to use local paths, we recommend keeping all model filenames unchanged and placing them in the same directory. This way, you can run the model by specifying the directory with the -p parameter. Otherwise, we suggest modifying the paths in the code accordingly.
-
-If you don't ​​specify​​ the prompt file, a default ​​Haystack task​​ with ​​15K context length​​ will be provided.
 You can use --help to learn more ​​about the script's features​​.
 
 We also provide a script, `tests/long_prompt_gen.py`, to generate ​​long code summarization.
@@ -122,21 +122,6 @@ CPM.cu/
 ```
 
 ## More
-### For Developer
-If you are a developer and want to perform *incremental compilation*, first initialize the environment:
-```bash
-git clone https://github.com/OpenBMB/CPM.cu.git --recursive
-cd CPM.cu
-pip install -e .
-```
-Then, use the following command for incremental compilation (you may need to manually install tools like ninja):
-```bash
-python setup.py build_ext --inplace
-```
-We support some environment variables for debugging and performance analysis. You can obtain related information with the following command:
-```bash
-python setup.py --help-config
-```
 
 ### Word Frequency File Generation
 We provide a word frequency generation script for FR-Spec, located at "scripts/fr_spec/gen_fr_index.py". You can run it as follows:
@@ -181,4 +166,3 @@ Please cite our paper if you find our work valuable.
   author={MiniCPM},
   year={2025}
 }
-```
