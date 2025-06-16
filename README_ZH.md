@@ -44,13 +44,15 @@ https://github.com/user-attachments/assets/ab36fd7a-485b-4707-b72f-b80b5c43d024
 
 ### 从源码安装
 
-本库的构建依赖于 PyTorch 和 Ninja，请在安装本库前确保已正确安装这两个依赖。如遇到安装问题，请根据错误提示进行解决，或通过 GitHub Issues 提交问题反馈。
+本库的构建依赖于 PyTorch 和 Ninja，请在安装本库前确保已正确安装这两个依赖。
 
 ```bash
 git clone https://github.com/OpenBMB/cpm.cu.git --recursive
 cd cpm.cu
 pip install .
 ```
+
+如遇到安装问题，请根据错误提示进行解决，或通过 GitHub Issues 提交问题反馈。你可以使用 `python setup.py --help-config` 查看更多安装配置信息。
 
 <div id="modelweights"></div>
 

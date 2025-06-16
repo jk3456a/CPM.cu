@@ -44,13 +44,15 @@ https://github.com/user-attachments/assets/ab36fd7a-485b-4707-b72f-b80b5c43d024
 
 ### Install from source
 
-This library's build depends on torch and ninja. Please install both before installing this library. If you encounter installation issues, please follow the error messages to resolve them or create a GitHub issue.
+This library's build depends on torch and ninja. Please install both before installing this library.
 
 ```bash
 git clone https://github.com/OpenBMB/CPM.cu.git --recursive
 cd CPM.cu
 pip install .
 ```
+
+If you encounter installation issues, please follow the error messages to resolve them or create a GitHub issue. You can use `python setup.py --help-config` to view more installation configuration options.
 
 <div id="modelweights"></div>
 
