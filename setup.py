@@ -5,6 +5,69 @@ from setuptools import setup, find_packages
 
 this_dir = os.path.dirname(os.path.abspath(__file__))
 
+def validate_and_detect_cuda_arch():
+    """Validate CPMCU_CUDA_ARCH environment variable and detect CUDA architectures
+    
+    Returns:
+        tuple: (arch_list, error_message, success_message)
+        - arch_list: List of valid CUDA architectures, empty if detection failed
+        - error_message: Error message with category prefix, None if successful
+                        Prefixes: "ENV_FORMAT:", "ENV_PARSE:", "CUDA_UNAVAILABLE:", "CUDA_DETECT:", "TORCH_MISSING:"
+        - success_message: Success message to print, None if failed
+    """
+    cuda_arch_env = os.getenv("CPMCU_CUDA_ARCH")
+    
+    # Case 1: Environment variable is set - validate it
+    if cuda_arch_env:
+        try:
+            arch_list = []
+            for token in cuda_arch_env.split(','):
+                token = token.strip()
+                if not token:
+                    continue
+                if not token.isdigit():
+                    return [], f"ENV_FORMAT: Invalid architecture '{token}': must be numeric", None
+                arch_num = int(token)
+                if arch_num < 80 or arch_num > 120:
+                    return [], f"ENV_FORMAT: Invalid architecture '{token}': must be between 80-120", None
+                arch_list.append(token)
+            
+            if not arch_list:
+                return [], "ENV_FORMAT: No valid architectures found in CPMCU_CUDA_ARCH", None
+            
+            # Success - return environment variable usage message
+            success_msg = f"Using CUDA architectures from environment variable: {arch_list}"
+            return arch_list, None, success_msg
+            
+        except Exception as e:
+            return [], f"ENV_PARSE: Failed to parse CPMCU_CUDA_ARCH: {e}", None
+    
+    # Case 2: No environment variable - auto-detect from devices
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return [], "CUDA_UNAVAILABLE: CUDA is not available and CPMCU_CUDA_ARCH is not set", None
+        
+        # Auto-detect architectures from available devices
+        arch_set = set()
+        device_count = torch.cuda.device_count()
+        for i in range(device_count):
+            major, minor = torch.cuda.get_device_capability(i)
+            arch_set.add(f"{major}{minor}")
+        
+        arch_list = sorted(list(arch_set))
+        if not arch_list:
+            return [], "CUDA_DETECT: No valid CUDA architectures detected from devices", None
+        
+        # Success - return auto-detection result message
+        success_msg = f"Detected CUDA architectures: {arch_list} (from {device_count} GPU devices)"
+        return arch_list, None, success_msg
+        
+    except ImportError:
+        return [], "TORCH_MISSING: PyTorch not available and CPMCU_CUDA_ARCH is not set", None
+    except Exception as e:
+        return [], f"CUDA_DETECT: Failed to detect CUDA architectures: {e}", None
+
 def check_dependencies():
     """Check critical dependencies and exit if not satisfied"""
     error_suggestion_pairs = []
@@ -65,49 +128,32 @@ def check_dependencies():
         error = f"Failed to check Ninja version: {e}"
         error_suggestion_pairs.append((error, []))
     
-    # Check CUDA devices
-    cuda_arch_env = os.getenv("CPMCU_CUDA_ARCH")
-    if cuda_arch_env:
-        # Validate CPMCU_CUDA_ARCH format
-        try:
-            arch_list = []
-            for token in cuda_arch_env.split(','):
-                token = token.strip()
-                if not token:
-                    continue
-                if not token.isdigit():
-                    raise ValueError(f"Invalid architecture '{token}': must be numeric")
-                arch_num = int(token)
-                if arch_num < 80 or arch_num > 120:
-                    raise ValueError(f"Invalid architecture '{token}': must be between 80-120")
-                arch_list.append(token)
-            
-            if not arch_list:
-                raise ValueError("No valid architectures found")
-                
-            # Valid CPMCU_CUDA_ARCH, skip device check silently
-            
-        except ValueError as e:
-            error = f"Invalid CPMCU_CUDA_ARCH format: {e}"
+    # Check CUDA architectures using unified function
+    arch_list, cuda_error, success_message = validate_and_detect_cuda_arch()
+    if cuda_error:
+        error_category, error_message = cuda_error.split(': ', 1)
+        
+        if error_category in ["ENV_FORMAT", "ENV_PARSE"]:
+            # Environment variable format/parsing errors
+            error = f"Invalid CPMCU_CUDA_ARCH format: {error_message}"
             suggestions = [CUDA_ARCH_FORMAT]
             error_suggestion_pairs.append((error, suggestions))
-    else:
-        try:
-            import torch
-            if not torch.cuda.is_available():
-                error = "CUDA is not available"
-                suggestions = [CUDA_ARCH_ENV, JETSON_TORCH]
-                error_suggestion_pairs.append((error, suggestions))
-            else:
-                # CUDA is available and devices are detected
-                device_count = torch.cuda.device_count()
-                print(f"Found {device_count} CUDA device(s)")
-        except ImportError:
-            # PyTorch not available, already handled above
+        elif error_category in ["CUDA_UNAVAILABLE", "CUDA_DETECT"]:
+            # CUDA detection/availability errors
+            error = error_message
+            suggestions = [CUDA_ARCH_ENV, JETSON_TORCH]
+            error_suggestion_pairs.append((error, suggestions))
+        elif error_category in ["TORCH_MISSING"]:
+            # Skip TORCH_MISSING errors as they are already handled in PyTorch version check
             pass
-        except Exception as e:
-            error = f"Failed to check CUDA devices: {e}"
-            error_suggestion_pairs.append((error, []))
+        else:
+            # Fallback for unexpected error categories
+            error = f"CUDA setup error: {error_message}"
+            suggestions = [CUDA_ARCH_ENV, JETSON_TORCH]
+            error_suggestion_pairs.append((error, suggestions))
+    else:
+        # Success - print the success message
+        print(success_message)
     
     # Print errors and suggestions in yellow color and exit
     if error_suggestion_pairs:
@@ -209,49 +255,6 @@ if "--help-config" in sys.argv:
 
 # Check critical dependencies
 check_dependencies()
-
-def detect_cuda_arch():
-    """Detect CUDA architecture from environment or devices"""
-    # 1. Check environment variable first
-    env_arch = os.getenv("CPMCU_CUDA_ARCH")
-    if env_arch:
-        arch_list = []
-        for token in env_arch.split(','):
-            token = token.strip()
-            if token and token.isdigit():
-                arch_list.append(token)
-            elif token:
-                raise ValueError(
-                    f"Invalid CUDA architecture format: '{token}'. "
-                    f"CPMCU_CUDA_ARCH should only contain comma-separated numbers like '80,86'"
-                )
-        
-        if arch_list:
-            print(f"Using CUDA architectures from environment variable: {arch_list}")
-            return arch_list
-    
-    # 2. Auto-detect from CUDA devices
-    try:
-        import torch
-        if torch.cuda.is_available():
-            arch_set = set()
-            device_count = torch.cuda.device_count()
-            for i in range(device_count):
-                major, minor = torch.cuda.get_device_capability(i)
-                arch_set.add(f"{major}{minor}")
-            
-            arch_list = sorted(list(arch_set))
-            print(f"Detected CUDA architectures: {arch_list} (from {device_count} GPU devices)")
-            return arch_list
-        else:
-            print("No CUDA devices detected. Cannot determine CUDA architecture.")
-            return []
-    except ImportError:
-        print("PyTorch not available. Cannot determine CUDA architecture.")
-        return []
-    except Exception as e:
-        print(f"CUDA architecture detection failed: {e}. Cannot determine CUDA architecture.")
-        return []
 
 def get_compile_config():
     """Get compilation configuration based on environment variables"""
@@ -355,11 +358,6 @@ def create_build_extension():
                 os.environ["USE_NINJA"] = "1"
                 print("Ninja build system enabled for faster compilation")
             except ImportError:
-                print("ERROR: Ninja build system is required but not found.")
-                print("Please install ninja manually using one of the following methods:")
-                print("  1. pip install ninja")
-                print("  2. conda install ninja")
-                print("  3. System package manager (e.g., apt install ninja-build)")
                 raise RuntimeError("Ninja is required for compilation but not available. Please install ninja and try again.")
             
             # Set MAX_JOBS if not already set
@@ -391,13 +389,12 @@ def build_cuda_extension():
     show_current_config()
     
     # Detect CUDA architecture
-    arch_list = detect_cuda_arch()
-    if not arch_list:
-        print("ERROR: No valid CUDA architectures detected.")
-        print("To build CUDA extensions, either:")
-        print("1. Set CPMCU_CUDA_ARCH environment variable (e.g., export CPMCU_CUDA_ARCH=80)")
-        print("2. Ensure CUDA devices are available and PyTorch can detect them")
+    arch_list, error_message, success_message = validate_and_detect_cuda_arch()
+    if error_message:
         raise RuntimeError("Cannot determine CUDA architecture for compilation")
+    
+    # Print success message
+    print(success_message)
     
     # Get compilation configuration
     cxx_args, nvcc_args, link_args, dtype_set = get_compile_config()
