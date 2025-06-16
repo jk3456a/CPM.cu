@@ -461,6 +461,7 @@ setup(
         "datasets",
         "fschat",
         "openai",
+        "numpy<2.0",
     ],
     ext_modules=ext_modules,
     cmdclass=cmdclass,
