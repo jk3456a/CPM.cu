@@ -37,6 +37,7 @@ https://github.com/user-attachments/assets/ab36fd7a-485b-4707-b72f-b80b5c43d024
 - [框架安装](#install)
 - [模型权重](#modelweights)
 - [运行示例](#example)
+- [OpenAI API 服务](#openai-api)
 
 <div id="install"></div>
 
@@ -106,6 +107,24 @@ Decode tokens/s: 154.59
 
 - `Prefill` (输入) 和 `Decode` (输出) 速度通过（长度、时间和 token/s）输出。
 - `Mean accept length` (平均接受长度) 是使用投机采样时接受 token 的平均长度。
+
+<div id="openai-api"></div>
+
+## OpenAI API 服务
+
+启动 OpenAI 兼容的 API 服务器（参数与 `tests/test_generate.py` 相同）：
+
+```bash
+python -m cpmcu.server [options]
+```
+
+测试 API，支持流式和非流式模式：
+
+```bash
+python tests/test_openai_api.py [--no-stream]
+```
+
+目前仅支持 `/v1/chat/completions` 接口，`model` 字段无效。
 
 ## 代码结构
 

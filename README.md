@@ -37,6 +37,7 @@ https://github.com/user-attachments/assets/ab36fd7a-485b-4707-b72f-b80b5c43d024
 - [Installation](#install)
 - [Model Weights](#modelweights)
 - [Quick Start](#example)
+- [OpenAI API Server](#openai-api)
 
 <div id="install"></div>
 
@@ -106,6 +107,24 @@ Where:
 
 - the `Prefill` and `Decode` speed are output by (length, time and token/s).
 - the `Mean accept length` is the average length of the accepted tokens when using Speculative Sampling.
+
+<div id="openai-api"></div>
+
+## OpenAI API Server
+
+Start the OpenAI-compatible API server (same args as `tests/test_generate.py`):
+
+```bash
+python -m cpmcu.server [options]
+```
+
+Test the API (supports streaming and non-streaming modes):
+
+```bash
+python tests/test_openai_api.py [--no-stream]
+```
+
+Only `/v1/chat/completions` is supported and the `model` field is ignored.
 
 ## Code Structure
 
