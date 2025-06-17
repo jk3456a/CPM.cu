@@ -391,7 +391,12 @@ async def chat_completions(request: ChatCompletionRequest):
                         request,
                         tokenizer
                     ),
-                    media_type="text/plain"
+                    media_type="text/plain",
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                        "X-Accel-Buffering": "no",  # Disable nginx buffering
+                    }
                 )
             else:
                 return await generate_chat_completion(
@@ -480,6 +485,7 @@ async def stream_chat_completion(
     
     import time
     import uuid
+    import asyncio
     
     completion_id = f"chatcmpl-{uuid.uuid4().hex}"
     created = int(time.time())
@@ -544,7 +550,12 @@ async def stream_chat_completion(
                     ]
                 )
             
+            # Yield with immediate flush to ensure real-time streaming
             yield f"data: {response.model_dump_json()}\n\n"
+            
+            # Add a small async yield to allow the event loop to process
+            # This ensures immediate delivery of each chunk
+            await asyncio.sleep(0)
             
             if is_finished:
                 break
@@ -558,8 +569,10 @@ async def stream_chat_completion(
             }
         }
         yield f"data: {json.dumps(error_response)}\n\n"
+        await asyncio.sleep(0)
     
     yield "data: [DONE]\n\n"
+    await asyncio.sleep(0)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
