@@ -2,183 +2,40 @@
 
 #ifdef ENABLE_DTYPE_FP16
 
-// GPTQ_CALL_IF(vllm::kU4B8, 16, 4, 256) expansions
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 1, 16, 4, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 2, 16, 4, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 3, 16, 4, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 4, 16, 4, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 1, 16, 4, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 1, 16, 4, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 1, 16, 4, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 1, 16, 4, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 2, 16, 4, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 2, 16, 4, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 2, 16, 4, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 2, 16, 4, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 3, 16, 4, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 3, 16, 4, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 3, 16, 4, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 3, 16, 4, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 4, 16, 4, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 4, 16, 4, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 4, 16, 4, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 4, 16, 4, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
+// Helper macros for template instantiation
+#define MARLIN_INST_SPLIT(dtype, qtype, block_size, split, warp_m, warp_n, pack_size) \
+    template __global__ void marlin::Marlin<dtype, qtype, block_size, split, warp_m, warp_n, pack_size, true, false, 0> \
+        (const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool); \
+    template __global__ void marlin::Marlin<dtype, qtype, block_size, split, warp_m, warp_n, pack_size, false, false, -1> \
+        (const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool); \
+    template __global__ void marlin::Marlin<dtype, qtype, block_size, split, warp_m, warp_n, pack_size, false, false, 2> \
+        (const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool); \
+    template __global__ void marlin::Marlin<dtype, qtype, block_size, split, warp_m, warp_n, pack_size, false, false, 4> \
+        (const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool); \
+    template __global__ void marlin::Marlin<dtype, qtype, block_size, split, warp_m, warp_n, pack_size, false, false, 8> \
+        (const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
 
-// GPTQ_CALL_IF(vllm::kU4B8, 8, 8, 256) expansions
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 1, 8, 8, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 2, 8, 8, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 3, 8, 8, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 4, 8, 8, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 1, 8, 8, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 1, 8, 8, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 1, 8, 8, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 1, 8, 8, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 2, 8, 8, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 2, 8, 8, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 2, 8, 8, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 2, 8, 8, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 3, 8, 8, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 3, 8, 8, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 3, 8, 8, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 3, 8, 8, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 4, 8, 8, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 4, 8, 8, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 4, 8, 8, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 256, 4, 8, 8, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
+#define MARLIN_INST_ALL_SPLITS(dtype, qtype, block_size, warp_m, warp_n, pack_size) \
+    MARLIN_INST_SPLIT(dtype, qtype, block_size, 1, warp_m, warp_n, pack_size) \
+    MARLIN_INST_SPLIT(dtype, qtype, block_size, 2, warp_m, warp_n, pack_size) \
+    MARLIN_INST_SPLIT(dtype, qtype, block_size, 3, warp_m, warp_n, pack_size) \
+    MARLIN_INST_SPLIT(dtype, qtype, block_size, 4, warp_m, warp_n, pack_size)
 
-// GPTQ_CALL_IF(vllm::kU4B8, 8, 4, 128) expansions
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 1, 8, 4, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 2, 8, 4, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 3, 8, 4, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 4, 8, 4, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 1, 8, 4, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 1, 8, 4, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 1, 8, 4, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 1, 8, 4, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 2, 8, 4, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 2, 8, 4, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 2, 8, 4, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 2, 8, 4, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 3, 8, 4, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 3, 8, 4, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 3, 8, 4, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 3, 8, 4, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 4, 8, 4, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 4, 8, 4, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 4, 8, 4, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 4, 8, 4, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
+#define MARLIN_INST_QTYPE(dtype, block_size, warp_m, warp_n, pack_size) \
+    MARLIN_INST_ALL_SPLITS(dtype, vllm::kU4B8.id(), block_size, warp_m, warp_n, pack_size) \
+    MARLIN_INST_ALL_SPLITS(dtype, vllm::kU8B128.id(), block_size, warp_m, warp_n, pack_size)
 
-// GPTQ_CALL_IF(vllm::kU4B8, 4, 8, 128) expansions
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 1, 4, 8, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 2, 4, 8, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 3, 4, 8, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 4, 4, 8, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 1, 4, 8, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 1, 4, 8, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 1, 4, 8, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 1, 4, 8, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 2, 4, 8, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 2, 4, 8, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 2, 4, 8, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 2, 4, 8, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 3, 4, 8, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 3, 4, 8, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 3, 4, 8, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 3, 4, 8, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 4, 4, 8, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 4, 4, 8, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 4, 4, 8, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU4B8.id(), 128, 4, 4, 8, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
+#define MARLIN_INST_CONFIG(block_size, warp_m, warp_n, pack_size) \
+    MARLIN_INST_QTYPE(__half, block_size, warp_m, warp_n, pack_size)
 
-// GPTQ_CALL_IF(vllm::kU8B128, 16, 4, 256) expansions
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 1, 16, 4, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 2, 16, 4, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 3, 16, 4, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 4, 16, 4, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 1, 16, 4, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 1, 16, 4, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 1, 16, 4, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 1, 16, 4, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 2, 16, 4, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 2, 16, 4, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 2, 16, 4, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 2, 16, 4, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 3, 16, 4, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 3, 16, 4, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 3, 16, 4, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 3, 16, 4, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 4, 16, 4, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 4, 16, 4, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 4, 16, 4, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 4, 16, 4, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
+// Instantiate all combinations
+MARLIN_INST_CONFIG(256, 16, 4, 4)  // GPTQ_CALL_IF(vllm::kU4B8/kU8B128, 16, 4, 256)
+MARLIN_INST_CONFIG(256, 8, 8, 4)   // GPTQ_CALL_IF(vllm::kU4B8/kU8B128, 8, 8, 256)
+MARLIN_INST_CONFIG(128, 8, 4, 4)   // GPTQ_CALL_IF(vllm::kU4B8/kU8B128, 8, 4, 128)
+MARLIN_INST_CONFIG(128, 4, 8, 4)   // GPTQ_CALL_IF(vllm::kU4B8/kU8B128, 4, 8, 128)
 
-
-// GPTQ_CALL_IF(vllm::kU8B128, 8, 8, 256) expansions
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 1, 8, 8, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 2, 8, 8, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 3, 8, 8, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 4, 8, 8, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 1, 8, 8, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 1, 8, 8, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 1, 8, 8, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 1, 8, 8, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 2, 8, 8, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 2, 8, 8, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 2, 8, 8, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 2, 8, 8, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 3, 8, 8, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 3, 8, 8, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 3, 8, 8, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 3, 8, 8, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 4, 8, 8, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 4, 8, 8, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 4, 8, 8, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 256, 4, 8, 8, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-
-
-// GPTQ_CALL_IF(vllm::kU8B128, 8, 4, 128) expansions
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 1, 8, 4, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 2, 8, 4, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 3, 8, 4, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 4, 8, 4, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 1, 8, 4, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 1, 8, 4, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 1, 8, 4, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 1, 8, 4, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 2, 8, 4, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 2, 8, 4, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 2, 8, 4, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 2, 8, 4, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 3, 8, 4, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 3, 8, 4, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 3, 8, 4, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 3, 8, 4, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 4, 8, 4, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 4, 8, 4, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 4, 8, 4, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 4, 8, 4, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-
-
-// GPTQ_CALL_IF(vllm::kU8B128, 4, 8, 128) expansions
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 1, 4, 8, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 2, 4, 8, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 3, 4, 8, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 4, 4, 8, 4, true, false, 0>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 1, 4, 8, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 1, 4, 8, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 1, 4, 8, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 1, 4, 8, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 2, 4, 8, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 2, 4, 8, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 2, 4, 8, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 2, 4, 8, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 3, 4, 8, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 3, 4, 8, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 3, 4, 8, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 3, 4, 8, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 4, 4, 8, 4, false, false, -1>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 4, 4, 8, 4, false, false, 2>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 4, 4, 8, 4, false, false, 4>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
-template __global__ void marlin::Marlin<__half, vllm::kU8B128.id(), 128, 4, 4, 8, 4, false, false, 8>(const int4*, const int4*, int4*, int4*, const int4*, const int4*, const int*, int, int, int, int, int*, bool);
+#undef MARLIN_INST_SPLIT
+#undef MARLIN_INST_ALL_SPLITS
+#undef MARLIN_INST_CONFIG
 
 #endif 
