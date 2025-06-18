@@ -151,6 +151,14 @@ python scripts/fr_spec/gen_fr_index.py --model_path <your_model_path>
 ```
 You can modify the code to use your own dataset. If your task is in a specific vertical domain, constructing word frequencies tailored to that domain can significantly improve processing speed.
 
+### GPTQ to Marlin Conversion
+We provide a script to convert GPTQ-quantized model to Marlin format, located at "scripts/model_convert/gptq2marlin.py". You can run it as follows:
+```bash
+python scripts/model_convert/gptq2marlin.py \
+    --src <gptq_model_path> \
+    --dst <marlin_model_path>
+```
+This script supports MiniCPM, Llama and EAGLE format. It will automatically detect the model type and perform the appropriate conversion.
 
 ## Acknowledgments
 
