@@ -115,7 +115,7 @@ Where:
 Start the OpenAI-compatible API server (same args as `tests/test_generate.py`):
 
 ```bash
-python -m cpmcu.server [options]
+python tests/start_server.py [options]
 ```
 
 Test the API (supports streaming and non-streaming modes):

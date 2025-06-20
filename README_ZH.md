@@ -115,7 +115,7 @@ Decode tokens/s: 154.59
 启动 OpenAI 兼容的 API 服务器（参数与 `tests/test_generate.py` 相同）：
 
 ```bash
-python -m cpmcu.server [options]
+python tests/start_server.py [options]
 ```
 
 测试 API，支持流式和非流式模式：
