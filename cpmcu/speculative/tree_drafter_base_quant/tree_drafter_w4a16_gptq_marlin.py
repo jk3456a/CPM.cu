@@ -107,7 +107,7 @@ class W4A16GPTQMarlinLLM_with_tree_drafter(W4A16GPTQMarlinLLM):
                 
                 # yield first token
                 token = self.tree_draft_ids[0].item()
-                text = self.tokenizer.decode([token], skip_special_tokens=False)
+                text = self.tokenizer.decode([token], skip_special_tokens=True)
                 prev_token = token
                 
                 yield {
@@ -151,11 +151,11 @@ class W4A16GPTQMarlinLLM_with_tree_drafter(W4A16GPTQMarlinLLM):
                         # For correct spacing, decode with previous token context
                         if prev_token is not None:
                             context_tokens = [prev_token] + accepted_tokens
-                            context_text = self.tokenizer.decode(context_tokens, skip_special_tokens=False)
-                            prev_text = self.tokenizer.decode([prev_token], skip_special_tokens=False)
+                            context_text = self.tokenizer.decode(context_tokens, skip_special_tokens=True)
+                            prev_text = self.tokenizer.decode([prev_token], skip_special_tokens=True)
                             new_text = context_text[len(prev_text):]
                         else:
-                            new_text = self.tokenizer.decode(accepted_tokens, skip_special_tokens=False)
+                            new_text = self.tokenizer.decode(accepted_tokens, skip_special_tokens=True)
                         
                         # Yield tokens with batch text for first token, empty for others
                         for j in range(accept_length):

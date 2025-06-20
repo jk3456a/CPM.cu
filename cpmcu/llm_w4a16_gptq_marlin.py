@@ -353,7 +353,7 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
                 prev_token = token
                 
                 # yield first token
-                text = self.tokenizer.decode([token], skip_special_tokens=False)
+                text = self.tokenizer.decode([token], skip_special_tokens=True)
                 
                 yield {
                     'token': token,
@@ -382,11 +382,11 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
                     # For correct spacing, decode with previous token context
                     if prev_token is not None:
                         context_tokens = [prev_token, token]
-                        context_text = self.tokenizer.decode(context_tokens, skip_special_tokens=False)
-                        prev_text = self.tokenizer.decode([prev_token], skip_special_tokens=False)
+                        context_text = self.tokenizer.decode(context_tokens, skip_special_tokens=True)
+                        prev_text = self.tokenizer.decode([prev_token], skip_special_tokens=True)
                         text = context_text[len(prev_text):]
                     else:
-                        text = self.tokenizer.decode([token], skip_special_tokens=False)
+                        text = self.tokenizer.decode([token], skip_special_tokens=True)
                     
                     is_finished = token in teminators or i == generation_length - 2
                     
