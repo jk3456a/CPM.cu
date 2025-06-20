@@ -150,6 +150,15 @@ python scripts/fr_spec/gen_fr_index.py --model_path <your modelpath>
 ```
 你可以修改代码使用自己的数据集。如果你的任务是特定垂直领域，根据领域构造词频对速度提升有显著收益。
 
+### GPTQ转Marlin格式
+我们提供了GPTQ量化模型转Marlin格式的转换脚本，位于"scripts/model_convert/gptq2marlin.py"，运行方式如下：
+```bash
+python scripts/model_convert/gptq2marlin.py \
+    --src <gptq_model_path> \
+    --dst <marlin_model_path>
+```
+该脚本支持MiniCPM、Llama和EAGLE格式，会自动检测模型类型并进行相应转换。
+
 ## 致谢
 
 我们的 `src/flash_attn` 文件夹基于 [FlashAttention](https://github.com/Dao-AILab/flash-attention/tree/v2.6.3/csrc/flash_attn) 并进行了修改。
