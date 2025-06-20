@@ -4,9 +4,9 @@ import json
 import sys
 import argparse
 
-def test_chat_completion(stream=True):
+def test_chat_completion(host="localhost", port=8000, stream=True):
     """Test chat completion with streaming or non-streaming mode"""
-    url = "http://localhost:8000/v1/chat/completions"
+    url = f"http://{host}:{port}/v1/chat/completions"
     
     data = {
         "model": "model",
@@ -116,10 +116,10 @@ def _handle_non_streaming_response(response):
         print(f"\nError parsing response JSON: {e}")
         return False
 
-def check_server_health():
+def check_server_health(host="localhost", port=8000):
     """Check if server is running and model is loaded"""
     try:
-        health_response = requests.get("http://localhost:8000/health")
+        health_response = requests.get(f"http://{host}:{port}/health")
         health_response.raise_for_status()
         health_data = health_response.json()
         print("Health check:", health_data)
@@ -132,26 +132,31 @@ def check_server_health():
         
     except requests.exceptions.RequestException as e:
         print(f"Health check failed: {e}")
-        print("Please make sure the server is running on localhost:8000")
+        print(f"Please make sure the server is running on {host}:{port}")
         return False
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CPM.cu Server API Test")
     parser.add_argument('--no-stream', action='store_true', 
                        help='Use non-streaming mode instead of streaming (default: streaming)')
+    parser.add_argument('--port', type=int, default=8000,
+                       help='Server port (default: 8000)')
+    parser.add_argument('--host', type=str, default='localhost',
+                       help='Server host (default: localhost)')
     args = parser.parse_args()
     
     use_stream = not args.no_stream
     mode = "Streaming" if use_stream else "Non-streaming"
     print(f"CPM.cu Server {mode} Test")
+    print(f"Connecting to {args.host}:{args.port}")
     print("=" * 50)
     
     # Check server health first
-    if not check_server_health():
+    if not check_server_health(host=args.host, port=args.port):
         sys.exit(1)
     
     # Run test
-    success = test_chat_completion(stream=use_stream)
+    success = test_chat_completion(host=args.host, port=args.port, stream=use_stream)
     
     if success:
         print(f"\n{mode} test completed successfully!")
