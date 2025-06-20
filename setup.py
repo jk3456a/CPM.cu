@@ -439,7 +439,7 @@ def build_cuda_extension():
     
     # Add NVCC thread configuration
     nvcc_threads = os.getenv("NVCC_THREADS") or "8"
-    final_nvcc_args = nvcc_args + gencode_args + arch_defines + ["-MMD", "-MP", "--threads", nvcc_threads]
+    final_nvcc_args = nvcc_args + gencode_args + arch_defines + ["-MMD", "-MP", "--threads", nvcc_threads, "--split-compile", nvcc_threads] 
     
     # Create extension
     ext_modules = [
