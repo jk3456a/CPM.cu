@@ -16,7 +16,6 @@ import json
 from pathlib import Path
 from huggingface_hub import snapshot_download
 from cpmcu.utils import (
-    load_config_from_file,
     get_default_config,
     check_or_download_model,
     get_model_paths,
@@ -32,10 +31,6 @@ def create_argument_parser():
                        help='Server port (default: 8000)')
     parser.add_argument('--host', type=str, default='localhost',
                        help='Server host (default: localhost)')
-    
-    # Configuration file argument
-    parser.add_argument('--config-file', '--config_file', type=str, default=None,
-                        help='Path to configuration file (JSON format, default: use default_config.json)')
     
     # Basic arguments
     parser.add_argument('--path-prefix', '--path_prefix', '-p', type=str, default='openbmb', 
@@ -89,33 +84,33 @@ def create_argument_parser():
 
     # Model configuration numeric arguments
     parser.add_argument('--frspec-vocab-size', '--frspec_vocab_size', type=int, default=None,
-                        help='Frequent speculation vocab size (default: from default_config)')
+                        help='Frequent speculation vocab size (default: 32768)')
     parser.add_argument('--eagle-window-size', '--eagle_window_size', type=int, default=None,
-                        help='Eagle window size (default: from default_config)')
+                        help='Eagle window size (default: 1024)')
     parser.add_argument('--eagle-num-iter', '--eagle_num_iter', type=int, default=None,
-                        help='Eagle number of iterations (default: from default_config)')
+                        help='Eagle number of iterations (default: 2)')
     parser.add_argument('--eagle-topk-per-iter', '--eagle_topk_per_iter', type=int, default=None,
-                        help='Eagle top-k per iteration (default: from default_config)')
+                        help='Eagle top-k per iteration (default: 10)')
     parser.add_argument('--eagle-tree-size', '--eagle_tree_size', type=int, default=None,
-                        help='Eagle tree size (default: from default_config)')
+                        help='Eagle tree size (default: 12)')
     parser.add_argument('--sink-window-size', '--sink_window_size', type=int, default=None,
-                        help='Sink window size of sparse attention (default: from default_config)')
+                        help='Sink window size of sparse attention (default: 1)')
     parser.add_argument('--block-window-size', '--block_window_size', type=int, default=None,
-                        help='Block window size of sparse attention (default: from default_config)')
+                        help='Block window size of sparse attention (default: 8)')
     parser.add_argument('--sparse-topk-k', '--sparse_topk_k', type=int, default=None,
-                        help='Sparse attention top-k (default: from default_config)')
+                        help='Sparse attention top-k (default: 64)')
     parser.add_argument('--sparse-switch', '--sparse_switch', type=int, default=None,
-                        help='Context length of dense and sparse attention switch (default: from default_config)')
+                        help='Context length of dense and sparse attention switch (default: 1)')
     parser.add_argument('--chunk-length', '--chunk_length', type=int, default=None,
-                        help='Chunk length for prefilling (default: from default_config)')
+                        help='Chunk length for prefilling (default: 2048)')
     parser.add_argument('--memory-limit', '--memory_limit', type=float, default=None,
-                        help='Memory limit for use (default: from default_config)')
+                        help='Memory limit for use (default: 0.9)')
     parser.add_argument('--temperature', '--temperature', type=float, default=None,
-                        help='Temperature for processing (default: from default_config)')
+                        help='Temperature for processing (default: 0.0)')
     parser.add_argument('--dtype', type=str, default=None, choices=['float16', 'bfloat16'],
-                        help='Model dtype (default: from default_config)')
+                        help='Model dtype (default: float16)')
     parser.add_argument('--random-seed', '--random_seed', type=int, default=None,
-                        help='Random seed for processing (default: from default_config)')
+                        help='Random seed for processing (default: None)')
     
     return parser
 
@@ -124,20 +119,9 @@ def parse_and_merge_config(default_config):
     parser = create_argument_parser()
     args = parser.parse_args()
     
-    # Load configuration from file if specified
-    if args.config_file:
-        try:
-            config = load_config_from_file(args.config_file)
-            print(f"Loaded configuration from: {args.config_file}")
-        except FileNotFoundError as e:
-            print(f"Error: {e}")
-            sys.exit(1)
-        except json.JSONDecodeError as e:
-            print(f"Error parsing config file {args.config_file}: {e}")
-            sys.exit(1)
-    else:
-        config = default_config.copy()
-        print("Using default configuration")
+    # Use default configuration
+    config = default_config.copy()
+    print("Using default configuration")
     
     # Set default values to None for boolean arguments that weren't specified
     bool_args = [key for key, value in config.items() if isinstance(value, bool)]
@@ -220,62 +204,8 @@ class ServerManager:
         self.port = port
         self.host = host
         self.server_process = None
-        self.temp_config_file = None
         
-    def create_temp_config(self, config):
-        """Create temporary configuration file for server"""
-        import tempfile
-        import json
-        import torch
-        
-        # Create temporary file
-        fd, temp_path = tempfile.mkstemp(suffix='.json', prefix='cpmcu_server_config_')
-        
-        # Prepare config for JSON serialization
-        json_config = config.copy()
-        
-        # Convert non-serializable values
-        if 'dtype' in json_config:
-            # Convert torch.dtype to string for JSON serialization
-            if json_config['dtype'] == torch.float16:
-                json_config['dtype'] = 'float16'
-            elif json_config['dtype'] == torch.bfloat16:
-                json_config['dtype'] = 'bfloat16'
-            elif isinstance(json_config['dtype'], str):
-                # Already a string, keep as is
-                pass
-            else:
-                # Default fallback
-                json_config['dtype'] = 'float16'
-        
-        try:
-            with os.fdopen(fd, 'w') as f:
-                json.dump(json_config, f, indent=2)
-            
-            self.temp_config_file = temp_path
-            print(f"Created temporary config file: {temp_path}")
-            return temp_path
-            
-        except Exception as e:
-            # Only close fd if it hasn't been closed by os.fdopen
-            try:
-                os.close(fd)
-            except OSError:
-                pass  # fd already closed by os.fdopen
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
-            print(f"Error creating temp config file: {e}")
-            raise e
-    
-    def cleanup_temp_config(self):
-        """Clean up temporary configuration file"""
-        if self.temp_config_file and os.path.exists(self.temp_config_file):
-            try:
-                os.unlink(self.temp_config_file)
-                print(f"Cleaned up temporary config file: {self.temp_config_file}")
-            except Exception as e:
-                print(f"Warning: Failed to clean up temp config file: {e}")
-            self.temp_config_file = None
+
         
     def start_server(self, config=None):
         """Start the CPM.cu server"""
@@ -288,10 +218,8 @@ class ServerManager:
             "--host", self.host
         ]
         
-        if config:
-            # Create temporary config file
-            temp_config_path = self.create_temp_config(config)
-            cmd.extend(["--config-file", temp_config_path])
+        # Note: Configuration will use server's built-in defaults
+        # since --config-file support has been removed from tests
         
         print(f"Command: {' '.join(cmd)}")
         
@@ -311,7 +239,6 @@ class ServerManager:
             
         except Exception as e:
             print(f"Failed to start server: {e}")
-            self.cleanup_temp_config()
             return False
     
     def wait_and_monitor(self):
@@ -352,9 +279,6 @@ class ServerManager:
                 print(f"Error stopping server: {e}")
             
             self.server_process = None
-        
-        # Clean up temp config file
-        self.cleanup_temp_config()
     
     def run_server(self, config=None):
         """Start and run the server"""

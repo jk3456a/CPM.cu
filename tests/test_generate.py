@@ -5,7 +5,6 @@ from cpmcu.speculative import LLM_with_eagle
 from cpmcu.speculative.eagle_base_quant.eagle_base_w4a16_marlin_gptq import W4A16GPTQMarlinLLM_with_eagle
 from transformers import AutoTokenizer
 from cpmcu.utils import (
-    load_config_from_file,
     get_default_config,
     check_or_download_model,
     get_model_paths,
@@ -24,10 +23,6 @@ from huggingface_hub import snapshot_download
 def create_argument_parser():
     """Create and configure argument parser"""
     parser = argparse.ArgumentParser(description='Generate text using LLM models')
-    
-    # Configuration file argument
-    parser.add_argument('--config-file', '--config_file', type=str, default=None,
-                        help='Path to configuration file (JSON format, default: use default_config.json)')
     
     # Basic arguments
     parser.add_argument('--path-prefix', '--path_prefix', '-p', type=str, default='openbmb', 
@@ -85,35 +80,35 @@ def create_argument_parser():
 
     # Model configuration numeric arguments
     parser.add_argument('--frspec-vocab-size', '--frspec_vocab_size', type=int, default=None,
-                        help='Frequent speculation vocab size (default: from default_config)')
+                        help='Frequent speculation vocab size (default: 32768)')
     parser.add_argument('--eagle-window-size', '--eagle_window_size', type=int, default=None,
-                        help='Eagle window size (default: from default_config)')
+                        help='Eagle window size (default: 1024)')
     parser.add_argument('--eagle-num-iter', '--eagle_num_iter', type=int, default=None,
-                        help='Eagle number of iterations (default: from default_config)')
+                        help='Eagle number of iterations (default: 2)')
     parser.add_argument('--eagle-topk-per-iter', '--eagle_topk_per_iter', type=int, default=None,
-                        help='Eagle top-k per iteration (default: from default_config)')
+                        help='Eagle top-k per iteration (default: 10)')
     parser.add_argument('--eagle-tree-size', '--eagle_tree_size', type=int, default=None,
-                        help='Eagle tree size (default: from default_config)')
+                        help='Eagle tree size (default: 12)')
     parser.add_argument('--sink-window-size', '--sink_window_size', type=int, default=None,
-                        help='Sink window size of sparse attention (default: from default_config)')
+                        help='Sink window size of sparse attention (default: 1)')
     parser.add_argument('--block-window-size', '--block_window_size', type=int, default=None,
-                        help='Block window size of sparse attention (default: from default_config)')
+                        help='Block window size of sparse attention (default: 8)')
     parser.add_argument('--sparse-topk-k', '--sparse_topk_k', type=int, default=None,
-                        help='Sparse attention top-k (default: from default_config)')
+                        help='Sparse attention top-k (default: 64)')
     parser.add_argument('--sparse-switch', '--sparse_switch', type=int, default=None,
-                        help='Context length of dense and sparse attention switch (default: from default_config)')
+                        help='Context length of dense and sparse attention switch (default: 1)')
     parser.add_argument('--num-generate', '--num_generate', type=int, default=None,
-                        help='Number of tokens to generate (default: from default_config)')
+                        help='Number of tokens to generate (default: 256)')
     parser.add_argument('--chunk-length', '--chunk_length', type=int, default=None,
-                        help='Chunk length for prefilling (default: from default_config)')
+                        help='Chunk length for prefilling (default: 2048)')
     parser.add_argument('--memory-limit', '--memory_limit', type=float, default=None,
-                        help='Memory limit for use (default: from default_config)')
+                        help='Memory limit for use (default: 0.9)')
     parser.add_argument('--temperature', '--temperature', type=float, default=None,
-                        help='Temperature for processing (default: from default_config)')
+                        help='Temperature for processing (default: 0.0)')
     parser.add_argument('--dtype', type=str, default=None, choices=['float16', 'bfloat16'],
-                        help='Model dtype (default: from default_config)')
+                        help='Model dtype (default: float16)')
     parser.add_argument('--random-seed', '--random_seed', type=int, default=None,
-                        help='Random seed for processing (default: from default_config)')
+                        help='Random seed for processing (default: None)')
     # Demo arguments
     parser.add_argument('--use-enter', '--use_enter', action='store_true',
                         help='Use enter to generate')
@@ -131,20 +126,9 @@ def parse_and_merge_config(default_config):
     parser = create_argument_parser()
     args = parser.parse_args()
     
-    # Load configuration from file if specified
-    if args.config_file:
-        try:
-            config = load_config_from_file(args.config_file)
-            print(f"Loaded configuration from: {args.config_file}")
-        except FileNotFoundError as e:
-            print(f"Error: {e}")
-            sys.exit(1)
-        except json.JSONDecodeError as e:
-            print(f"Error parsing config file {args.config_file}: {e}")
-            sys.exit(1)
-    else:
-        config = default_config.copy()
-        print("Using default configuration")
+    # Use default configuration
+    config = default_config.copy()
+    print("Using default configuration")
     
     # Set default values to None for boolean arguments that weren't specified
     bool_args = [key for key, value in config.items() if isinstance(value, bool)]

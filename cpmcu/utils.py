@@ -29,51 +29,37 @@ def load_config_from_file(config_path: str) -> dict:
     return config
 
 def get_default_config():
-    """Get default configuration from file"""
-    default_config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'default_config.json')
-    
-    if not os.path.exists(default_config_path):
-        print(f"Error: Default config file not found at {default_config_path}")
-        print("Please ensure the config/default_config.json file exists.")
-        # Fallback to hardcoded config if file doesn't exist
-        return {
-            "test_minicpm4": True,
-            "use_stream": True,
-            "apply_eagle": True,
-            "apply_quant": True,
-            "apply_sparse": True,
-            "apply_eagle_quant": True,
-            "minicpm4_yarn": True,
-            "frspec_vocab_size": 32768,
-            "eagle_window_size": 1024,
-            "eagle_num_iter": 2,
-            "eagle_topk_per_iter": 10,
-            "eagle_tree_size": 12,
-            "apply_compress_lse": True,
-            "sink_window_size": 1,
-            "block_window_size": 8,
-            "sparse_topk_k": 64,
-            "sparse_switch": 1,
-            "num_generate": 256,
-            "chunk_length": 2048,
-            "memory_limit": 0.9,
-            "cuda_graph": True,
-            "dtype": torch.float16,
-            "use_terminators": True,
-            "temperature": 0.0,
-            "random_seed": None,
-            "use_enter": False,
-            "use_decode_enter": False
-        }
-    
-    try:
-        return load_config_from_file(default_config_path)
-    except json.JSONDecodeError as e:
-        print(f"Error parsing default config file {default_config_path}: {e}")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error loading default config file {default_config_path}: {e}")
-        sys.exit(1)
+    """Get default configuration"""
+    # Return hardcoded default configuration directly
+    return {
+        "test_minicpm4": True,
+        "use_stream": True,
+        "apply_eagle": True,
+        "apply_quant": True,
+        "apply_sparse": True,
+        "apply_eagle_quant": True,
+        "minicpm4_yarn": True,
+        "frspec_vocab_size": 32768,
+        "eagle_window_size": 1024,
+        "eagle_num_iter": 2,
+        "eagle_topk_per_iter": 10,
+        "eagle_tree_size": 12,
+        "apply_compress_lse": True,
+        "sink_window_size": 1,
+        "block_window_size": 8,
+        "sparse_topk_k": 64,
+        "sparse_switch": 1,
+        "num_generate": 256,
+        "chunk_length": 2048,
+        "memory_limit": 0.9,
+        "cuda_graph": True,
+        "dtype": torch.float16,
+        "use_terminators": True,
+        "temperature": 0.0,
+        "random_seed": None,
+        "use_enter": False,
+        "use_decode_enter": False
+    }
 
 def check_or_download_model(path):
     """Check if model exists locally, otherwise download from HuggingFace"""
