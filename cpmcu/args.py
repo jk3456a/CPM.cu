@@ -12,6 +12,18 @@ from typing import Dict, Any, Tuple
 from .utils import get_default_config
 
 
+def str2bool(v):
+    """Convert string to boolean value"""
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
+
 def add_model_config_args(parser: argparse.ArgumentParser):
     """Add common model configuration arguments"""
     
@@ -19,50 +31,42 @@ def add_model_config_args(parser: argparse.ArgumentParser):
     parser.add_argument('--path-prefix', '--path_prefix', '-p', type=str, default='openbmb', 
                        help='Path prefix for model directories')
 
-    # Model configuration boolean parameters
-    parser.add_argument('--test-minicpm4', '--test_minicpm4', action='store_true', default=argparse.SUPPRESS,
-                       help='Use MiniCPM4 model')
-    parser.add_argument('--no-test-minicpm4', '--no_test_minicpm4', action='store_false', dest='test_minicpm4', default=argparse.SUPPRESS)
+    # Model configuration boolean parameters (unified to support True/False)
+    # Maintain original default values from get_default_config()
     
-    parser.add_argument('--apply-eagle', '--apply_eagle', action='store_true', default=argparse.SUPPRESS,
-                       help='Use Eagle speculative decoding')
-    parser.add_argument('--no-apply-eagle', '--no_apply_eagle', action='store_false', dest='apply_eagle', default=argparse.SUPPRESS)
+    parser.add_argument('--test-minicpm4', '--test_minicpm4', type=str2bool, nargs='?', const=True, default=None,
+                       help='Use MiniCPM4 model (default: True). Values: true/false, yes/no, 1/0, or just --test-minicpm4 for True')
     
-    parser.add_argument('--apply-quant', '--apply_quant', action='store_true', default=argparse.SUPPRESS,
-                       help='Use quantized model')
-    parser.add_argument('--no-apply-quant', '--no_apply_quant', action='store_false', dest='apply_quant', default=argparse.SUPPRESS)
+    parser.add_argument('--apply-eagle', '--apply_eagle', type=str2bool, nargs='?', const=True, default=None,
+                       help='Use Eagle speculative decoding (default: True). Values: true/false, yes/no, 1/0, or just --apply-eagle for True')
     
-    parser.add_argument('--apply-sparse', '--apply_sparse', action='store_true', default=argparse.SUPPRESS,
-                       help='Use sparse attention')
-    parser.add_argument('--no-apply-sparse', '--no_apply_sparse', action='store_false', dest='apply_sparse', default=argparse.SUPPRESS)
+    parser.add_argument('--apply-quant', '--apply_quant', type=str2bool, nargs='?', const=True, default=None,
+                       help='Use quantized model (default: True). Values: true/false, yes/no, 1/0, or just --apply-quant for True')
     
-    parser.add_argument('--apply-eagle-quant', '--apply_eagle_quant', action='store_true', default=argparse.SUPPRESS,
-                       help='Use quantized Eagle model')
-    parser.add_argument('--no-apply-eagle-quant', '--no_apply_eagle_quant', action='store_false', dest='apply_eagle_quant', default=argparse.SUPPRESS)
+    parser.add_argument('--apply-sparse', '--apply_sparse', type=str2bool, nargs='?', const=True, default=None,
+                       help='Use sparse attention (default: True). Values: true/false, yes/no, 1/0, or just --apply-sparse for True')
     
-    parser.add_argument('--apply-compress-lse', '--apply_compress_lse', action='store_true', default=argparse.SUPPRESS,
-                       help='Apply LSE compression')
-    parser.add_argument('--no-apply-compress-lse', '--no_apply_compress_lse', action='store_false', dest='apply_compress_lse', default=argparse.SUPPRESS)
+    parser.add_argument('--apply-eagle-quant', '--apply_eagle_quant', type=str2bool, nargs='?', const=True, default=None,
+                       help='Use quantized Eagle model (default: True). Values: true/false, yes/no, 1/0, or just --apply-eagle-quant for True')
     
-    parser.add_argument('--cuda-graph', '--cuda_graph', action='store_true', default=argparse.SUPPRESS,
-                       help='Use CUDA graph optimization')
-    parser.add_argument('--no-cuda-graph', '--no_cuda_graph', action='store_false', dest='cuda_graph', default=argparse.SUPPRESS)
+    parser.add_argument('--apply-compress-lse', '--apply_compress_lse', type=str2bool, nargs='?', const=True, default=None,
+                       help='Apply LSE compression (default: True). Values: true/false, yes/no, 1/0, or just --apply-compress-lse for True')
     
-    parser.add_argument('--use-teminators', '--use_terminators', action='store_true', default=argparse.SUPPRESS,
-                       help='Use terminators')
-    parser.add_argument('--no-use-teminators', '--no_use_terminators', action='store_false', dest='use_terminators', default=argparse.SUPPRESS)
+    parser.add_argument('--cuda-graph', '--cuda_graph', type=str2bool, nargs='?', const=True, default=None,
+                       help='Use CUDA graph optimization (default: True). Values: true/false, yes/no, 1/0, or just --cuda-graph for True')
     
-    parser.add_argument('--minicpm4-yarn', '--minicpm4_yarn', action='store_true', default=argparse.SUPPRESS,
-                       help='Use MiniCPM4 YARN for long context')
-    parser.add_argument('--no-minicpm4-yarn', '--no_minicpm4_yarn', action='store_false', dest='minicpm4_yarn', default=argparse.SUPPRESS)
+    parser.add_argument('--use-terminators', '--use_terminators', type=str2bool, nargs='?', const=True, default=None,
+                       help='Use terminators (default: True). Values: true/false, yes/no, 1/0, or just --use-terminators for True')
     
-    parser.add_argument('--use-enter', '--use_enter', action='store_true', default=argparse.SUPPRESS,
-                       help='Use enter to generate')
-    parser.add_argument('--no-use-enter', '--no_use_enter', action='store_false', dest='use_enter', default=argparse.SUPPRESS)
+    parser.add_argument('--minicpm4-yarn', '--minicpm4_yarn', type=str2bool, nargs='?', const=True, default=None,
+                       help='Use MiniCPM4 YARN for long context (default: True). Values: true/false, yes/no, 1/0, or just --minicpm4-yarn for True')
     
-    parser.add_argument('--use-decode-enter', '--use_decode_enter', action='store_true', default=argparse.SUPPRESS,
-                       help='Use enter before decode phase')
-    parser.add_argument('--no-use-decode-enter', '--no_use_decode_enter', action='store_false', dest='use_decode_enter', default=argparse.SUPPRESS)
+    # Interactive features (default: False)
+    parser.add_argument('--use-enter', '--use_enter', type=str2bool, nargs='?', const=True, default=None,
+                       help='Use enter to generate (default: False). Values: true/false, yes/no, 1/0, or just --use-enter for True')
+    
+    parser.add_argument('--use-decode-enter', '--use_decode_enter', type=str2bool, nargs='?', const=True, default=None,
+                       help='Use enter before decode phase (default: False). Values: true/false, yes/no, 1/0, or just --use-decode-enter for True')
 
     # Numerical parameters
     parser.add_argument('--frspec-vocab-size', '--frspec_vocab_size', type=int, default=None,
@@ -120,9 +124,11 @@ def create_test_parser() -> argparse.ArgumentParser:
                        help='Direct prompt text')
     parser.add_argument('--prompt-haystack', '--prompt_haystack', type=int,
                        help='Generate haystack prompt with specified length in thousands')
-    parser.add_argument('--use-stream', '--use_stream', action='store_true', default=argparse.SUPPRESS,
-                       help='Use stream generation')
-    parser.add_argument('--no-use-stream', '--no_use_stream', action='store_false', dest='use_stream', default=argparse.SUPPRESS)
+    
+    # Add use_stream parameter for test parser
+    parser.add_argument('--use-stream', '--use_stream', type=str2bool, nargs='?', const=True, default=None,
+                       help='Use stream generation (default: True). Values: true/false, yes/no, 1/0, or just --use-stream for True')
+    
     parser.add_argument('--num-generate', '--num_generate', type=int, default=None,
                        help='Number of tokens to generate (default: 256)')
     
@@ -137,12 +143,10 @@ def merge_args_with_config(args, default_config: Dict[str, Any], is_server: bool
     config = default_config.copy()
     
     # Override config with any arguments that were explicitly specified
-    # (using argparse.SUPPRESS means only specified args appear in the args namespace)
     for key in config.keys():
         if hasattr(args, key):
             arg_value = getattr(args, key)
-            # For boolean args, they will be present if specified (due to SUPPRESS)
-            # For numerical args, only override if not None
+            # Handle dtype conversion
             if key == 'dtype':
                 if arg_value is not None:
                     if is_server:
@@ -152,8 +156,9 @@ def merge_args_with_config(args, default_config: Dict[str, Any], is_server: bool
                         # Test script converts to torch type
                         config[key] = torch.float16 if arg_value == 'float16' else torch.bfloat16
             elif isinstance(config[key], bool):
-                # Boolean argument was explicitly specified
-                config[key] = arg_value
+                # Boolean argument: only override if explicitly specified (not None)
+                if arg_value is not None:
+                    config[key] = arg_value
             elif arg_value is not None:
                 # Numerical argument with non-None value
                 config[key] = arg_value
