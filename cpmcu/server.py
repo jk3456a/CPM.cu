@@ -50,7 +50,6 @@ async def lifespan(app: FastAPI):
     global model_instance, model_config
     
     print(f"Loading model with configuration:")
-    print(f"Configuration: {model_config['config']}")
     
     try:
         config = model_config['config']
@@ -432,20 +431,16 @@ def main():
     
     # Server-specific configuration adjustments
     if not config['test_minicpm4']:
-        print("test_minicpm4 is False, set apply_sparse to False")
         config['apply_sparse'] = False
     
     # Process MiniCPM4 YARN configuration if enabled
     if config['test_minicpm4'] and config['minicpm4_yarn']:
-        print("Adding MiniCPM4 YARN configuration...")
+        # print("Adding MiniCPM4 YARN configuration...")
         config['yarn_factors'] = get_minicpm4_yarn_factors()
     
     # Set global model config
     global model_config
     model_config = {"config": config}
-    
-    # Display configuration summary
-    display_config_summary(config, "Server Configuration")
     
     print(f"Starting CPM.cu OpenAI API Server on {config.get('host', '0.0.0.0')}:{config.get('port', 8000)}")
     

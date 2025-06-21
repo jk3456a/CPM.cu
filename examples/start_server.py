@@ -17,28 +17,26 @@ from pathlib import Path
 from cpmcu.args import parse_server_args, display_config_summary
 
 class ServerManager:
-    def __init__(self, port=8000, host="localhost"):
+    def __init__(self, port=8000, host="localhost", server_args=None):
         self.port = port
         self.host = host
         self.server_process = None
+        self.server_args = server_args or []
         
 
         
     def start_server(self):
         """Start the CPM.cu server"""
-        print(f"Starting CPM.cu server on {self.host}:{self.port}...")
-        
-        # Build command
+        # Build command - pass through all server arguments
         cmd = [
             sys.executable, "-m", "cpmcu.server",
             "--port", str(self.port),
             "--host", self.host
         ]
         
-        # Note: Configuration will use server's built-in defaults
-        # since --config-file support has been removed from tests
-        
-        print(f"Command: {' '.join(cmd)}")
+        # Add all other server arguments
+        if self.server_args:
+            cmd.extend(self.server_args)
         
         try:
             # Start server process
@@ -99,10 +97,6 @@ class ServerManager:
     
     def run_server(self):
         """Start and run the server"""
-        print("=" * 60)
-        print("CPM.cu Server Startup")
-        print("=" * 60)
-        
         try:
             # Start server
             if not self.start_server():
@@ -119,17 +113,22 @@ class ServerManager:
                 self.stop_server()
 
 def main():
-    # Parse arguments and merge with default config
-    args, config = parse_server_args()
+    # Create a minimal parser for host and port only
+    host_port_parser = argparse.ArgumentParser(add_help=False)
+    host_port_parser.add_argument('--host', default='0.0.0.0')
+    host_port_parser.add_argument('--port', type=int, default=8000)
     
-    # Display configuration summary (for reference only)
-    display_config_summary(config, "Server Configuration Parameters")
-    print("Note: Server will use its built-in configuration")
+    # Parse known args (host/port) and get remaining args
+    host_port_args, server_args = host_port_parser.parse_known_args()
+    
+    # Also parse with full server parser for config
+    args, config = parse_server_args()
     
     # Create server manager
     server_manager = ServerManager(
-        port=args.port,
-        host=args.host
+        port=host_port_args.port,
+        host=host_port_args.host,
+        server_args=server_args
     )
     
     # Run server

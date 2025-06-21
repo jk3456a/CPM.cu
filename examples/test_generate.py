@@ -22,7 +22,6 @@ import json
 from huggingface_hub import snapshot_download   
 
 
-
 def make_input(tokenizer, args, prompt_content=None):
     """Prepare input tokens from prompt content or file"""
     
