@@ -25,78 +25,68 @@ def str2bool(v):
 
 
 def add_model_config_args(parser: argparse.ArgumentParser):
-    """Add common model configuration arguments"""
+    """Add common model configuration arguments with logical grouping"""
     
-    # Basic parameters
-    parser.add_argument('--path-prefix', '--path_prefix', '-p', type=str, default='openbmb', 
-                       help='Path prefix for model directories')
+    # Model Configuration Group
+    model_group = parser.add_argument_group('Model Configuration', 'Model configuration parameters')
+    model_group.add_argument('--path-prefix', '--path_prefix', '-p', type=str, default='openbmb', 
+                           help='Path prefix for model directories')
+    model_group.add_argument('--dtype', type=str, default=None, choices=['float16', 'bfloat16'],
+                            help='Model dtype (default: float16)')
+    model_group.add_argument('--chunk-length', '--chunk_length', type=int, default=None,
+                                 help='Chunk length (default: 2048)')
+    model_group.add_argument('--test-minicpm4', '--test_minicpm4', type=str2bool, nargs='?', const=True, default=None,
+                               help='Use MiniCPM4 model (default: True). Values: true/false, yes/no, 1/0, or just --test-minicpm4 for True')
+    model_group.add_argument('--apply-quant', '--apply_quant', type=str2bool, nargs='?', const=True, default=None,
+                               help='Use quantized model (default: True). Values: true/false, yes/no, 1/0, or just --apply-quant for True')
+    model_group.add_argument('--minicpm4-yarn', '--minicpm4_yarn', type=str2bool, nargs='?', const=True, default=None,
+                               help='Use MiniCPM4 YARN for long context (default: True). Values: true/false, yes/no, 1/0, or just --minicpm4-yarn for True')
 
-    # Model configuration boolean parameters (unified to support True/False)
-    # Maintain original default values from get_default_config()
-    
-    parser.add_argument('--test-minicpm4', '--test_minicpm4', type=str2bool, nargs='?', const=True, default=None,
-                       help='Use MiniCPM4 model (default: True). Values: true/false, yes/no, 1/0, or just --test-minicpm4 for True')
-    
-    parser.add_argument('--apply-eagle', '--apply_eagle', type=str2bool, nargs='?', const=True, default=None,
-                       help='Use Eagle speculative decoding (default: True). Values: true/false, yes/no, 1/0, or just --apply-eagle for True')
-    
-    parser.add_argument('--apply-quant', '--apply_quant', type=str2bool, nargs='?', const=True, default=None,
-                       help='Use quantized model (default: True). Values: true/false, yes/no, 1/0, or just --apply-quant for True')
-    
-    parser.add_argument('--apply-sparse', '--apply_sparse', type=str2bool, nargs='?', const=True, default=None,
-                       help='Use sparse attention (default: True). Values: true/false, yes/no, 1/0, or just --apply-sparse for True')
-    
-    parser.add_argument('--apply-eagle-quant', '--apply_eagle_quant', type=str2bool, nargs='?', const=True, default=None,
-                       help='Use quantized Eagle model (default: True). Values: true/false, yes/no, 1/0, or just --apply-eagle-quant for True')
-    
-    parser.add_argument('--apply-compress-lse', '--apply_compress_lse', type=str2bool, nargs='?', const=True, default=None,
-                       help='Apply LSE compression (default: True). Values: true/false, yes/no, 1/0, or just --apply-compress-lse for True')
-    
-    parser.add_argument('--cuda-graph', '--cuda_graph', type=str2bool, nargs='?', const=True, default=None,
-                       help='Use CUDA graph optimization (default: True). Values: true/false, yes/no, 1/0, or just --cuda-graph for True')
-    
-    parser.add_argument('--use-terminators', '--use_terminators', type=str2bool, nargs='?', const=True, default=None,
-                       help='Use terminators (default: True). Values: true/false, yes/no, 1/0, or just --use-terminators for True')
-    
-    parser.add_argument('--minicpm4-yarn', '--minicpm4_yarn', type=str2bool, nargs='?', const=True, default=None,
-                       help='Use MiniCPM4 YARN for long context (default: True). Values: true/false, yes/no, 1/0, or just --minicpm4-yarn for True')
-    
-    # Interactive features (default: False)
-    parser.add_argument('--use-enter', '--use_enter', type=str2bool, nargs='?', const=True, default=None,
-                       help='Use enter to generate (default: False). Values: true/false, yes/no, 1/0, or just --use-enter for True')
-    
-    parser.add_argument('--use-decode-enter', '--use_decode_enter', type=str2bool, nargs='?', const=True, default=None,
-                       help='Use enter before decode phase (default: False). Values: true/false, yes/no, 1/0, or just --use-decode-enter for True')
+    # System Features Group
+    system_group = parser.add_argument_group('System Features', 'System-level configuration parameters')
+    system_group.add_argument('--cuda-graph', '--cuda_graph', type=str2bool, nargs='?', const=True, default=None,
+                            help='Use CUDA graph optimization (default: True). Values: true/false, yes/no, 1/0, or just --cuda-graph for True')
+    system_group.add_argument('--memory-limit', '--memory_limit', type=float, default=None,
+                            help='Memory limit (default: 0.9)')
+    system_group.add_argument('--random-seed', '--random_seed', type=int, default=None,
+                            help='Random seed')
 
-    # Numerical parameters
-    parser.add_argument('--frspec-vocab-size', '--frspec_vocab_size', type=int, default=None,
-                       help='Frequent speculation vocab size (default: 32768)')
-    parser.add_argument('--eagle-window-size', '--eagle_window_size', type=int, default=None,
-                       help='Eagle window size (default: 1024)')
-    parser.add_argument('--eagle-num-iter', '--eagle_num_iter', type=int, default=None,
-                       help='Eagle number of iterations (default: 2)')
-    parser.add_argument('--eagle-topk-per-iter', '--eagle_topk_per_iter', type=int, default=None,
-                       help='Eagle top-k per iteration (default: 10)')
-    parser.add_argument('--eagle-tree-size', '--eagle_tree_size', type=int, default=None,
-                       help='Eagle tree size (default: 12)')
-    parser.add_argument('--sink-window-size', '--sink_window_size', type=int, default=None,
-                       help='Sink window size (default: 1)')
-    parser.add_argument('--block-window-size', '--block_window_size', type=int, default=None,
-                       help='Block window size (default: 8)')
-    parser.add_argument('--sparse-topk-k', '--sparse_topk_k', type=int, default=None,
-                       help='Sparse attention top-k (default: 64)')
-    parser.add_argument('--sparse-switch', '--sparse_switch', type=int, default=None,
-                       help='Sparse switch threshold (default: 1)')
-    parser.add_argument('--chunk-length', '--chunk_length', type=int, default=None,
-                       help='Chunk length (default: 2048)')
-    parser.add_argument('--memory-limit', '--memory_limit', type=float, default=None,
-                       help='Memory limit (default: 0.9)')
-    parser.add_argument('--temperature', '--temperature', type=float, default=None,
-                       help='Temperature (default: 0.0)')
-    parser.add_argument('--random-seed', '--random_seed', type=int, default=None,
-                       help='Random seed')
-    parser.add_argument('--dtype', type=str, default=None, choices=['float16', 'bfloat16'],
-                       help='Model dtype (default: float16)')
+    # Eagle Speculative Decoding Group
+    eagle_group = parser.add_argument_group('Eagle Speculative Decoding', 'Eagle speculative decoding configuration')
+    eagle_group.add_argument('--apply-eagle', '--apply_eagle', type=str2bool, nargs='?', const=True, default=None,
+                           help='Use Eagle speculative decoding (default: True). Values: true/false, yes/no, 1/0, or just --apply-eagle for True')
+    eagle_group.add_argument('--apply-eagle-quant', '--apply_eagle_quant', type=str2bool, nargs='?', const=True, default=None,
+                           help='Use quantized Eagle model (default: True). Values: true/false, yes/no, 1/0, or just --apply-eagle-quant for True')
+    eagle_group.add_argument('--eagle-window-size', '--eagle_window_size', type=int, default=None,
+                           help='Eagle window size (default: 1024)')
+    eagle_group.add_argument('--eagle-num-iter', '--eagle_num_iter', type=int, default=None,
+                           help='Eagle number of iterations (default: 2)')
+    eagle_group.add_argument('--eagle-topk-per-iter', '--eagle_topk_per_iter', type=int, default=None,
+                           help='Eagle top-k per iteration (default: 10)')
+    eagle_group.add_argument('--eagle-tree-size', '--eagle_tree_size', type=int, default=None,
+                           help='Eagle tree size (default: 12)')
+    eagle_group.add_argument('--frspec-vocab-size', '--frspec_vocab_size', type=int, default=None,
+                           help='Frequent speculation vocab size (default: 32768)')
+
+    # Sparse Attention Group
+    sparse_group = parser.add_argument_group('Sparse Attention', 'Sparse attention mechanism configuration')
+    sparse_group.add_argument('--apply-sparse', '--apply_sparse', type=str2bool, nargs='?', const=True, default=None,
+                            help='Use sparse attention (default: True). Values: true/false, yes/no, 1/0, or just --apply-sparse for True')
+    sparse_group.add_argument('--apply-compress-lse', '--apply_compress_lse', type=str2bool, nargs='?', const=True, default=None,
+                            help='Apply LSE compression (default: True). Values: true/false, yes/no, 1/0, or just --apply-compress-lse for True')
+    sparse_group.add_argument('--sink-window-size', '--sink_window_size', type=int, default=None,
+                            help='Sink window size (default: 1)')
+    sparse_group.add_argument('--block-window-size', '--block_window_size', type=int, default=None,
+                            help='Block window size (default: 8)')
+    sparse_group.add_argument('--sparse-topk-k', '--sparse_topk_k', type=int, default=None,
+                            help='Sparse attention top-k (default: 64)')
+    sparse_group.add_argument('--sparse-switch', '--sparse_switch', type=int, default=None,
+                            help='Sparse switch threshold (default: 1)')
+
+    # Generation Parameters Group
+    generation_group = parser.add_argument_group('Generation Parameters', 'Text generation configuration parameters')
+    generation_group.add_argument('--temperature', '--temp', type=float, default=None,
+                                 help='Temperature (default: 0.0)')
 
 
 def create_server_parser() -> argparse.ArgumentParser:
@@ -131,6 +121,16 @@ def create_test_parser() -> argparse.ArgumentParser:
     
     parser.add_argument('--num-generate', '--num_generate', type=int, default=None,
                        help='Number of tokens to generate (default: 256)')
+    
+    # Test-specific generation parameters
+    parser.add_argument('--use-terminators', '--use_terminators', type=str2bool, nargs='?', const=True, default=None,
+                       help='Use terminators (default: True). Values: true/false, yes/no, 1/0, or just --use-terminators for True')
+    
+    # Interactive Features
+    parser.add_argument('--use-enter', '--use_enter', type=str2bool, nargs='?', const=True, default=None,
+                       help='Use enter to generate (default: False). Values: true/false, yes/no, 1/0, or just --use-enter for True')
+    parser.add_argument('--use-decode-enter', '--use_decode_enter', type=str2bool, nargs='?', const=True, default=None,
+                       help='Use enter before decode phase (default: False). Values: true/false, yes/no, 1/0, or just --use-decode-enter for True')
     
     # Add model configuration parameters
     add_model_config_args(parser)
