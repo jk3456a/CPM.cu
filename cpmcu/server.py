@@ -38,6 +38,7 @@ from .utils import (
     apply_minicpm4_yarn_config,
     setup_frspec_vocab
 )
+from .args import parse_server_args, display_config_summary
 
 # Global model instance
 model_instance: Optional[LLM] = None
@@ -54,10 +55,8 @@ async def lifespan(app: FastAPI):
     try:
         config = model_config['config']
         
-        # Get model paths from processed configuration
-        eagle_path = config['eagle_path']
-        base_path = config['base_path']
-        eagle_repo_id = config['eagle_repo_id']
+        # Get model paths directly here
+        eagle_path, base_path, eagle_repo_id, base_repo_id = get_model_paths(config['path_prefix'], config)
         
         print(f"Eagle model path: {eagle_path}")
         print(f"Base model path: {base_path}")
@@ -424,42 +423,16 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 def main():
-    """Simplified main entry point for the server"""
-    parser = argparse.ArgumentParser(description="CPM.cu OpenAI API Server")
+    """Server entry point using unified argument processing"""
+    from .args import parse_server_args, display_config_summary
+    from .utils import get_minicpm4_yarn_factors
     
-    # Essential server arguments only
-    parser.add_argument('--path-prefix', '--path_prefix', '-p', type=str, default='openbmb', 
-                        help='Path prefix for model directories')
-    parser.add_argument("--config-file", "--config_file", type=str, default=None, 
-                        help="Path to configuration file (JSON format)")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    # Use unified argument parsing
+    args, config = parse_server_args()
     
-    # Parse minimal arguments for direct server use
-    args = parser.parse_args()
-    
-    # Load configuration from file if specified, otherwise use defaults
-    if args.config_file:
-        try:
-            config = load_config_from_file(args.config_file)
-            print(f"Loaded server configuration from: {args.config_file}")
-        except FileNotFoundError as e:
-            print(f"Error: {e}")
-            sys.exit(1)
-        except json.JSONDecodeError as e:
-            print(f"Error parsing config file {args.config_file}: {e}")
-            sys.exit(1)
-    else:
-        config = get_default_config()
-        print("Using default server configuration")
-    
-    # Add path_prefix to config if not already present
-    if 'path_prefix' not in config:
-        config['path_prefix'] = args.path_prefix
-    
-    # Disable sparse attention for non-MiniCPM4 models
+    # Server-specific configuration adjustments
     if not config['test_minicpm4']:
-        print(f"test_minicpm4 is False, set apply_sparse to False")
+        print("test_minicpm4 is False, set apply_sparse to False")
         config['apply_sparse'] = False
     
     # Process MiniCPM4 YARN configuration if enabled
@@ -467,46 +440,19 @@ def main():
         print("Adding MiniCPM4 YARN configuration...")
         config['yarn_factors'] = get_minicpm4_yarn_factors()
     
-    # Get model paths
-    print("Processing model paths...")
-    try:
-        eagle_path, base_path, eagle_repo_id, base_repo_id = get_model_paths(config['path_prefix'], config)
-        config['eagle_path'] = eagle_path
-        config['base_path'] = base_path
-        config['eagle_repo_id'] = eagle_repo_id
-        config['base_repo_id'] = base_repo_id
-        print(f"Eagle model path: {eagle_path}")
-        print(f"Base model path: {base_path}")
-    except Exception as e:
-        print(f"Error processing model paths: {e}")
-        sys.exit(1)
-    
-    # Process frequency speculative vocabulary if enabled
-    if config['apply_eagle'] and config['frspec_vocab_size'] > 0:
-        print(f"Processing frequency speculative vocabulary (size: {config['frspec_vocab_size']})...")
-        fr_path = f'{eagle_path}/freq_{config["frspec_vocab_size"]}.pt'
-        if not os.path.exists(fr_path):
-            print(f"Downloading frequency vocabulary file...")
-            cache_dir = snapshot_download(
-                eagle_repo_id,
-                ignore_patterns=["*.bin", "*.safetensors"],
-            )
-            fr_path = os.path.join(cache_dir, f'freq_{config["frspec_vocab_size"]}.pt')
-        config['frspec_vocab_path'] = fr_path
-        print(f"Frequency vocabulary path: {fr_path}")
-    
     # Set global model config
     global model_config
-    model_config = {
-        "config": config
-    }
+    model_config = {"config": config}
     
-    print(f"Starting CPM.cu OpenAI API Server on {args.host}:{args.port}")
+    # Display configuration summary
+    display_config_summary(config, "Server Configuration")
+    
+    print(f"Starting CPM.cu OpenAI API Server on {config.get('host', '0.0.0.0')}:{config.get('port', 8000)}")
     
     uvicorn.run(
         app,
-        host=args.host,
-        port=args.port,
+        host=config.get('host', '0.0.0.0'),
+        port=config.get('port', 8000),
         log_level="info"
     )
 

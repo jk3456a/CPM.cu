@@ -100,8 +100,8 @@ def create_server_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='CPM.cu Server')
     
     # Server-specific parameters
+    parser.add_argument('--host', type=str, default='0.0.0.0', help='Server host')
     parser.add_argument('--port', type=int, default=8000, help='Server port')
-    parser.add_argument('--host', type=str, default='localhost', help='Server host')
     
     # Add model configuration parameters
     add_model_config_args(parser)
@@ -156,6 +156,17 @@ def merge_args_with_config(args, default_config: Dict[str, Any], is_server: bool
                 config[key] = arg_value
             elif arg_value is not None:
                 # Numerical argument with non-None value
+                config[key] = arg_value
+    
+    # Handle additional arguments that are not in default config (like server-specific params)
+    server_specific_args = ['host', 'port', 'path_prefix']
+    test_specific_args = ['prompt_file', 'prompt_text', 'prompt_haystack']
+    
+    additional_args = server_specific_args if is_server else test_specific_args
+    for key in additional_args:
+        if hasattr(args, key):
+            arg_value = getattr(args, key)
+            if arg_value is not None:
                 config[key] = arg_value
     
     return config
