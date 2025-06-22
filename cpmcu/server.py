@@ -29,13 +29,9 @@ from .api_models import (
     HealthResponse
 )
 from .utils import (
-    load_config_from_file,
     get_default_config,
-    check_or_download_model,
-    get_model_paths,
-    get_minicpm4_yarn_factors,
+    setup_model_paths,
     create_model,
-    apply_minicpm4_yarn_config,
     setup_frspec_vocab
 )
 from .args import parse_server_args, display_config_summary
@@ -54,27 +50,23 @@ async def lifespan(app: FastAPI):
     try:
         config = model_config['config']
         
-        # Get model paths directly here
-        eagle_path, base_path, eagle_repo_id, base_repo_id = get_model_paths(config['path_prefix'], config)
+        # Setup model paths
+        model_path, draft_model_path, frspec_path = setup_model_paths(config)
         
-        print(f"Eagle model path: {eagle_path}")
-        print(f"Base model path: {base_path}")
+        print(f"Base model path: {model_path}")
+        if draft_model_path:
+            print(f"Draft model path: {draft_model_path}")
         
         # Create model instance
-        model_instance = create_model(eagle_path, base_path, config)
+        model_instance = create_model(model_path, draft_model_path, config)
         
         # Initialize model storage
         model_instance.init_storage()
         
-        # Apply MiniCPM4 YARN configuration if enabled
-        if config['test_minicpm4'] and config['minicpm4_yarn']:
-            print("Applying MiniCPM4 YARN rope_scaling parameters")
-            apply_minicpm4_yarn_config(model_instance, config)
-        
         # Load frequency speculative vocabulary if enabled
-        if config['apply_eagle'] and config['frspec_vocab_size'] > 0:
-            print(f"Loading frequency vocabulary...")
-            setup_frspec_vocab(model_instance, config, eagle_path, eagle_repo_id)
+        if config.get('apply_speculative', False) and frspec_path:
+            print(f"Loading frequency vocabulary from {frspec_path}")
+            setup_frspec_vocab(model_instance, frspec_path)
         
         # Load model weights
         model_instance.load_from_hf()

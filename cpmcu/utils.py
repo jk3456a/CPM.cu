@@ -11,7 +11,7 @@ import json
 import torch
 from huggingface_hub import snapshot_download
 
-def load_config_from_file(config_path: str) -> dict:
+def load_config_from_file(config_path: str, keep_dtype_as_string: bool = False) -> dict:
     """Load configuration from JSON file"""
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Config file not found: {config_path}")
@@ -19,8 +19,8 @@ def load_config_from_file(config_path: str) -> dict:
     with open(config_path, 'r', encoding='utf-8') as f:
         config = json.load(f)
     
-    # Convert dtype string to torch dtype
-    if 'dtype' in config:
+    # Convert dtype string to torch dtype unless keeping as string for server mode
+    if 'dtype' in config and not keep_dtype_as_string:
         if config['dtype'] == 'float16':
             config['dtype'] = torch.float16
         elif config['dtype'] == 'bfloat16':
@@ -60,6 +60,40 @@ def get_default_config():
         "use_enter": False,
         "use_decode_enter": False
     }
+
+def create_temp_config(config: dict, for_server: bool = False) -> dict:
+    """Create a temporary config with proper type conversions for serialization"""
+    temp_config = config.copy()
+    
+    # Handle dtype conversion based on context
+    if 'dtype' in temp_config:
+        if for_server:
+            # For server mode, keep as string to avoid JSON serialization issues
+            if hasattr(temp_config['dtype'], '__name__'):
+                # Convert torch.dtype to string
+                temp_config['dtype'] = str(temp_config['dtype']).split('.')[-1]
+        else:
+            # For non-server mode, ensure it's a proper torch dtype
+            if isinstance(temp_config['dtype'], str):
+                if temp_config['dtype'] == 'float16':
+                    temp_config['dtype'] = torch.float16
+                elif temp_config['dtype'] == 'bfloat16':
+                    temp_config['dtype'] = torch.bfloat16
+    
+    return temp_config
+
+def setup_model_paths(config: dict):
+    """Setup model paths from configuration"""
+    # Extract model paths from config
+    model_path = config.get('model_path')
+    draft_model_path = config.get('draft_model_path')
+    frspec_path = config.get('frspec_path')
+    
+    # If not directly specified, derive from path_prefix pattern
+    if not model_path:
+        model_path, draft_model_path, _, _ = get_model_paths(config.get('path_prefix', 'openbmb'), config)
+    
+    return model_path, draft_model_path, frspec_path
 
 def check_or_download_model(path):
     """Check if model exists locally, otherwise download from HuggingFace"""
@@ -133,8 +167,16 @@ def create_model(eagle_path, base_path, config):
     from .speculative import LLM_with_eagle
     from .speculative.eagle_base_quant.eagle_base_w4a16_marlin_gptq import W4A16GPTQMarlinLLM_with_eagle
     
+    # Handle dtype conversion - convert string to torch dtype if needed
+    dtype_value = config['dtype']
+    if isinstance(dtype_value, str):
+        if dtype_value == 'float16':
+            dtype_value = torch.float16
+        elif dtype_value == 'bfloat16':
+            dtype_value = torch.bfloat16
+    
     common_kwargs = {
-        'dtype': config['dtype'],
+        'dtype': dtype_value,
         'chunk_length': config['chunk_length'],
         'cuda_graph': config['cuda_graph'],
         'apply_sparse': config['apply_sparse'],
@@ -173,20 +215,11 @@ def create_model(eagle_path, base_path, config):
         else:
             return LLM(base_path, **common_kwargs)
 
-def setup_frspec_vocab(llm, config, eagle_path, eagle_repo_id):
+def setup_frspec_vocab(llm, frspec_path):
     """Setup frequency speculative vocabulary for Eagle models"""
-    if config['apply_eagle'] and config['frspec_vocab_size'] > 0:
-        fr_path = f'{eagle_path}/freq_{config["frspec_vocab_size"]}.pt'
-        if not os.path.exists(fr_path):
-            cache_dir = snapshot_download(
-                eagle_repo_id,
-                ignore_patterns=["*.bin", "*.safetensors"],
-            )
-            fr_path = os.path.join(cache_dir, f'freq_{config["frspec_vocab_size"]}.pt')
-        
-        with open(fr_path, 'rb') as f:
+    if frspec_path and os.path.exists(frspec_path):
+        with open(frspec_path, 'rb') as f:
             token_id_remap = torch.tensor(torch.load(f, weights_only=True), dtype=torch.int32, device="cpu")
         llm._load("token_id_remap", token_id_remap, cls="eagle")
-        
-        return fr_path
+        return frspec_path
     return None 

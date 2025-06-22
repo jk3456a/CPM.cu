@@ -6,10 +6,8 @@ from cpmcu.speculative.eagle_base_quant.eagle_base_w4a16_marlin_gptq import W4A1
 from transformers import AutoTokenizer
 from cpmcu.utils import (
     get_default_config,
-    check_or_download_model,
-    get_model_paths,
+    setup_model_paths,
     create_model,
-    apply_minicpm4_yarn_config,
     setup_frspec_vocab
 )
 from cpmcu.args import parse_test_args, display_config_summary
@@ -217,10 +215,10 @@ def main(args, config):
     
     display_config_summary(config)
     
-    # Get model paths and create model
-    eagle_path, base_path, eagle_repo_id, base_repo_id = get_model_paths(args.path_prefix, config)
-    tokenizer = AutoTokenizer.from_pretrained(base_path, trust_remote_code=True)
-    llm = create_model(eagle_path, base_path, config)
+    # Setup model paths and create model
+    model_path, draft_model_path, frspec_path = setup_model_paths(config)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    llm = create_model(model_path, draft_model_path, config)
     
     # Prepare input
     input_ids = make_input(tokenizer, args)
@@ -229,12 +227,12 @@ def main(args, config):
     # Initialize model
     llm.init_storage()
     
-    # Apply MiniCPM4 YARN configuration if enabled
-    if config['test_minicpm4'] and config['minicpm4_yarn']:
-        apply_minicpm4_yarn_config(llm, config)
+    # Load frequency speculative vocabulary if enabled
+    if config.get('apply_speculative', False) and frspec_path:
+        print(f"Loading frequency vocabulary from {frspec_path}")
+        setup_frspec_vocab(llm, frspec_path)
     
-    if config['apply_eagle'] and config['frspec_vocab_size'] > 0:
-        setup_frspec_vocab(llm, config, eagle_path, eagle_repo_id)
+    # Load model weights
     llm.load_from_hf()
     
     # Run generation
