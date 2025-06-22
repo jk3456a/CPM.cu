@@ -2,8 +2,8 @@
 """
 CPM.cu Server Startup Script
 
-This script starts the CPM.cu server with configurable parameters.
-Handles all configuration and argument processing before launching the server.
+Generic server launcher for CPM.cu models.
+Requires explicit model paths and configuration parameters.
 """
 
 import subprocess
@@ -95,8 +95,8 @@ class ServerManager:
             
             self.server_process = None
     
-    def run_server(self):
-        """Start and run the server"""
+    def launch_server(self):
+        """Start and launch the server"""
         try:
             # Start server
             if not self.start_server():
@@ -121,9 +121,6 @@ def main():
     # Parse known args (host/port) and get remaining args
     host_port_args, server_args = host_port_parser.parse_known_args()
     
-    # Also parse with full server parser for config
-    args, config = parse_server_args()
-    
     # Create server manager
     server_manager = ServerManager(
         port=host_port_args.port,
@@ -131,8 +128,8 @@ def main():
         server_args=server_args
     )
     
-    # Run server
-    success = server_manager.run_server()
+    # Launch server
+    success = server_manager.launch_server()
     
     if success:
         print("\nServer stopped successfully")

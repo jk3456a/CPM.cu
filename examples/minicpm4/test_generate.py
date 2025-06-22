@@ -2,194 +2,169 @@
 """
 MiniCPM4 Test Generation Script
 
-This script provides MiniCPM4-specific test generation with YARN configuration
-and optimized settings for MiniCPM4 models.
+Optimized test script for MiniCPM4 models with YARN support and default configurations.
 """
 
-import sys
-import os
 import argparse
-import torch
+import sys
+from pathlib import Path
 
-# Import from installed cpmcu package
-from cpmcu.utils import setup_model_paths, create_model, setup_frspec_vocab
-from cpmcu.args import display_config_summary
-from transformers import AutoTokenizer
-
-# Import local config module
-from config import (
-    get_minicpm4_default_config,
-    get_minicpm4_model_paths,
-    apply_minicpm4_yarn_config
-)
-
-
-def make_input(tokenizer, args):
-    """Create input for generation"""
-    if args.prompt_file:
-        with open(args.prompt_file, 'r', encoding='utf-8') as f:
-            prompt = f.read().strip()
-    elif args.prompt_text:
-        prompt = args.prompt_text
-    elif hasattr(args, 'prompt_haystack') and args.prompt_haystack:
-        # Generate haystack prompt
-        needle = "The secret key is 42"
-        haystack_length = args.prompt_haystack * 1000
-        haystack = "Random text. " * (haystack_length // 13)  # Approximate
-        prompt = f"{haystack}\n{needle}\nQuestion: What is the secret key?"
-    else:
-        prompt = "Hello, how are you today?"
-    
-    input_ids = tokenizer(prompt, return_tensors="pt")["input_ids"]
-    return input_ids.to("cuda", dtype=torch.int32)
-
-def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
-    """Run streaming generation"""
-    print("Starting streaming generation...")
-    results = llm.generate(
-        input_ids=input_ids,
-        generation_length=config['num_generate'],
-        teminators=terminators,
-        use_stream=True
-    )
-    
-    generated_text = ""
-    for result in results:
-        if 'text' in result:
-            print(result['text'], end='', flush=True)
-            generated_text += result['text']
-    print("\nGeneration completed!")
-    return generated_text
-
-def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
-    """Run non-streaming generation"""
-    print("Starting non-streaming generation...")
-    results = llm.generate(
-        input_ids=input_ids,
-        generation_length=config['num_generate'],
-        teminators=terminators,
-        use_stream=False
-    )
-    
-    generated_text = ""
-    for result in results:
-        if 'text' in result:
-            generated_text += result['text']
-    
-    print(f"Generated text: {generated_text}")
-    return generated_text
-
-
+# Smart import handling - supports both execution modes
+if __package__ is None:
+    # Direct script execution - add parent to path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from minicpm4.default_config import create_minicpm4_config
+    from cpmcu.generate import run_generation
+else:
+    # Module execution - use relative import
+    from .default_config import create_minicpm4_config
+    from ...cpmcu.generate import run_generation
 
 
 def create_minicpm4_test_parser():
-    """Create MiniCPM4-specific test argument parser"""
+    """Create argument parser with MiniCPM4 optimized defaults"""
     parser = argparse.ArgumentParser(description='MiniCPM4 Test Generation')
     
-    # MiniCPM4 specific parameters
-    parser.add_argument('--path-prefix', type=str, default='openbmb',
-                       help='HuggingFace model path prefix (default: openbmb)')
-    parser.add_argument('--enable-yarn', action='store_true', default=True,
-                       help='Enable YARN rope scaling for long context (default: True)')
-    parser.add_argument('--use-quant', action='store_true', default=True,
-                       help='Use quantized models (default: True)')
-    parser.add_argument('--use-eagle', action='store_true', default=True,
-                       help='Use Eagle speculative decoding (default: True)')
-    parser.add_argument('--use-eagle-quant', action='store_true', default=True,
-                       help='Use quantized Eagle model (default: True)')
-    
-    # Test parameters
-    parser.add_argument('--prompt-file', type=str, default=None,
+    # Prompt configuration
+    parser.add_argument('--prompt-file', '--prompt_file', type=str, default=None,
                        help='Path to prompt file')
-    parser.add_argument('--prompt-text', type=str, default=None,
+    parser.add_argument('--prompt-text', '--prompt_text', type=str, default=None,
                        help='Direct prompt text')
-    parser.add_argument('--prompt-haystack', type=int,
+    parser.add_argument('--prompt-haystack', '--prompt_haystack', type=int, default=None,
                        help='Generate haystack prompt with specified length in thousands')
-    parser.add_argument('--use-stream', action='store_true', default=True,
-                       help='Use stream generation (default: True)')
-    parser.add_argument('--num-generate', type=int, default=256,
+    
+    # Model configuration with MiniCPM4 defaults
+    parser.add_argument('--path-prefix', '--path_prefix', type=str, default='openbmb',
+                       help='Model repository prefix (default: openbmb)')
+    parser.add_argument('--apply-quant', '--apply_quant', type=lambda x: x.lower() == 'true', default=True,
+                       help='Use quantized model (default: True)')
+    parser.add_argument('--apply-spec-quant', '--apply_spec_quant', type=lambda x: x.lower() == 'true', default=True,
+                       help='Use quantized speculative model (default: True)')
+    parser.add_argument('--minicpm4-yarn', '--minicpm4_yarn', type=lambda x: x.lower() == 'true', default=True,
+                       help='Enable MiniCPM4 YARN (default: True)')
+    parser.add_argument('--apply-sparse', '--apply_sparse', type=lambda x: x.lower() == 'true', default=True,
+                       help='Use sparse attention (default: True)')
+    
+    # Generation parameters
+    parser.add_argument('--temperature', '--temp', type=float, default=0.0,
+                       help='Generation temperature (default: 0.0)')
+    parser.add_argument('--num-generate', '--num_generate', type=int, default=256,
                        help='Number of tokens to generate (default: 256)')
-    parser.add_argument('--temperature', type=float, default=0.0,
-                       help='Temperature for generation (default: 0.0)')
+    parser.add_argument('--use-stream', '--use_stream', type=lambda x: x.lower() == 'true', default=True,
+                       help='Use stream generation (default: True)')
+    parser.add_argument('--chunk-length', '--chunk_length', type=int, default=2048,
+                       help='Chunk length (default: 2048)')
+    
+    # Interactive features
+    parser.add_argument('--use-enter', '--use_enter', type=lambda x: x.lower() == 'true', default=False,
+                       help='Use enter to generate (default: False)')
+    parser.add_argument('--use-decode-enter', '--use_decode_enter', type=lambda x: x.lower() == 'true', default=False,
+                       help='Use enter before decode phase (default: False)')
+    
+    # Optional overrides
+    parser.add_argument('--frspec-path', '--frspec_path', type=str, default=None,
+                       help='Path to frequency speculative vocabulary file')
     
     return parser
 
 
-def setup_minicpm4_test(args):
-    """Setup MiniCPM4 test configuration"""
-    # Get MiniCPM4 model paths
-    model_paths = get_minicpm4_model_paths(
-        path_prefix=args.path_prefix,
-        use_quant=args.use_quant,
-        use_eagle=args.use_eagle,
-        use_eagle_quant=args.use_eagle_quant
-    )
+def generate_haystack_prompt(target_length_k):
+    """Generate haystack prompt with pass key hidden in context
     
-    # Get MiniCPM4 default configuration
-    config = get_minicpm4_default_config(
-        enable_yarn=args.enable_yarn,
-        temperature=args.temperature,
-        num_generate=args.num_generate,
-        use_stream=args.use_stream
-    )
+    Args:
+        target_length_k: Target length in thousands of tokens
     
-    # Update with model paths
-    config.update(model_paths)
+    Returns:
+        Generated haystack prompt string
+    """
+    # Simple calculation based on target length
+    a = target_length_k * 16  # Scale factor for before text
+    b = target_length_k * 33  # Scale factor for after text
     
-    return config
+    # Fixed pass key from original implementation
+    digits = 681725493
+    
+    head = "There is a pass key hidden in the context. Find it and remember it. I will quiz you about it later. "
+    before = "The sky is blue. The tree is green. The flower is red. The sun is yellow. " * a
+    needle = f"The pass key is {digits}. Remember it. The pass key is {digits}"
+    after = "The sky is blue. The tree is green. The flower is red. The sun is yellow. " * b
+    query = "Now, give me the exact number of the pass key. The pass key is "
+    
+    return head + before + needle + after + query
 
 
 def main():
-    """Main entry point for MiniCPM4 test generation"""
+    """MiniCPM4 test generation main entry point"""
     parser = create_minicpm4_test_parser()
     args = parser.parse_args()
     
-    # Setup MiniCPM4 configuration
-    config = setup_minicpm4_test(args)
+    # Determine if we should use chat template based on prompt type
+    use_chat_template = True
     
-    print("=" * 50)
-    print("MiniCPM4 Test Configuration:")
-    print("=" * 50)
-    print(f"Base Model: {config.get('model_path', 'N/A')}")
-    print(f"Draft Model: {config.get('draft_model_path', 'N/A')}")
-    print(f"Quantization: Base={config['apply_quant']}, Eagle={config['apply_spec_quant']}")
-    print(f"YARN Enabled: {config.get('enable_yarn', False)}")
-    print(f"Generation: Stream={config['use_stream']}, Tokens={config['num_generate']}")
-    print("=" * 50)
+    # Create MiniCPM4 configuration
+    config = create_minicpm4_config(
+        path_prefix=args.path_prefix,
+        apply_quant=args.apply_quant,
+        apply_spec_quant=args.apply_spec_quant,
+        minicpm4_yarn=args.minicpm4_yarn,
+        apply_sparse=args.apply_sparse,
+        temperature=args.temperature,
+        num_generate=args.num_generate,
+        use_stream=args.use_stream,
+        chunk_length=args.chunk_length,
+        use_enter=args.use_enter,
+        use_decode_enter=args.use_decode_enter
+    )
     
-    # Setup model paths and create model
-    model_path, draft_model_path, frspec_path = setup_model_paths(config)
-    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-    llm = create_model(model_path, draft_model_path, config)
+    # Add prompt parameters to config
+    if args.prompt_file:
+        config['prompt_file'] = args.prompt_file
+        # Use chat template for file prompts
+        use_chat_template = True
+    elif args.prompt_text:
+        config['prompt_text'] = args.prompt_text
+        # Use chat template for text prompts
+        use_chat_template = True
+    elif args.prompt_haystack:
+        # Generate haystack prompt
+        haystack_prompt = generate_haystack_prompt(args.prompt_haystack)
+        config['prompt_text'] = haystack_prompt
+        # Don't use chat template for haystack prompts
+        use_chat_template = False
+        print(f"Generated haystack prompt with {args.prompt_haystack}k tokens (using pass key 681725493)")
+        print("Note: Chat template disabled for haystack prompt")
     
-    # Prepare input
-    input_ids = make_input(tokenizer, args)
-    teminators = [] if not config['use_terminators'] else [tokenizer.eos_token_id]
+    # Set chat template usage in config
+    config['use_chat_template'] = use_chat_template
     
-    # Initialize model
-    llm.init_storage()
+    # Add optional FRSpec path
+    if args.frspec_path:
+        config['frspec_path'] = args.frspec_path
     
-    # Apply MiniCPM4 YARN configuration if enabled
-    if config.get('enable_yarn', True):
-        print("Applying MiniCPM4 YARN rope_scaling parameters")
-        apply_minicpm4_yarn_config(llm)
+    print("=" * 60)
+    print("MiniCPM4 Test Generation Configuration:")
+    print("=" * 60)
+    print(f"Model: {config['model_path']}")
+    print(f"Draft Model: {config['draft_model_path']}")
+    print(f"Features: speculative={config['apply_speculative']}, quant={config['apply_quant']}, sparse={config['apply_sparse']}")
+    print(f"YARN: {config['minicpm4_yarn']}")
+    print(f"Generation: num_tokens={config['num_generate']}, stream={config['use_stream']}")
+    print(f"Chat template: {'enabled' if use_chat_template else 'disabled'}")
+    print("=" * 60)
     
-    # Load frequency speculative vocabulary if enabled
-    if config.get('apply_speculative', False) and frspec_path:
-        print(f"Loading frequency vocabulary from {frspec_path}")
-        setup_frspec_vocab(llm, frspec_path)
-    
-    # Load model weights
-    llm.load_from_hf()
-    
-    # Run generation
-    if config['use_stream']:
-        run_stream_generation(llm, input_ids, config, teminators, tokenizer)
-    else:
-        run_non_stream_generation(llm, input_ids, config, teminators, tokenizer)
-    
-    llm.print_perf_summary()
+    try:
+        print("Starting MiniCPM4 generation...")
+        # Direct function call instead of subprocess
+        generated_text = run_generation(config)
+        print("\nGeneration completed successfully!")
+        return 0
+    except Exception as e:
+        print(f"Generation failed: {e}")
+        return 1
+    except KeyboardInterrupt:
+        print("\nGeneration interrupted by user")
+        return 0
 
 
 if __name__ == "__main__":
-    main() 
+    sys.exit(main()) 

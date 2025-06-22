@@ -259,8 +259,8 @@ async def generate_chat_completion(
     
     # Handle different return formats based on model type
     config = model_config['config']
-    if config.get('apply_eagle', False):
-        # Eagle models return: (tokens, accept_lengths, decode_time, prefill_time)
+    if config.get('apply_speculative', False):
+        # Speculative models return: (tokens, accept_lengths, decode_time, prefill_time)
         tokens, accept_lengths, decode_time, prefill_time = gen_result
     else:
         # Base models return: (tokens, decode_time, prefill_time)
@@ -413,22 +413,12 @@ async def global_exception_handler(request: Request, exc: Exception):
         ).model_dump()
     )
 
-def main():
-    """Server entry point using unified argument processing"""
-    from .args import parse_server_args, display_config_summary
-    from .utils import get_minicpm4_yarn_factors
+def launch_server(config: Dict[str, Any]):
+    """Launch server with given configuration"""
+    from .args import display_config_summary
     
-    # Use unified argument parsing
-    args, config = parse_server_args()
-    
-    # Server-specific configuration adjustments
-    if not config['test_minicpm4']:
-        config['apply_sparse'] = False
-    
-    # Process MiniCPM4 YARN configuration if enabled
-    if config['test_minicpm4'] and config['minicpm4_yarn']:
-        # print("Adding MiniCPM4 YARN configuration...")
-        config['yarn_factors'] = get_minicpm4_yarn_factors()
+    # Display configuration summary
+    display_config_summary(config, "Server Configuration")
     
     # Set global model config
     global model_config
@@ -442,6 +432,16 @@ def main():
         port=config.get('port', 8000),
         log_level="info"
     )
+
+def main():
+    """Server entry point using unified argument processing"""
+    from .args import parse_server_args
+    
+    # Use unified argument parsing
+    args, config = parse_server_args()
+    
+    # Launch server
+    launch_server(config)
 
 if __name__ == "__main__":
     main() 
