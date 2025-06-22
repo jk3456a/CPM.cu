@@ -107,6 +107,17 @@ def apply_minicpm4_yarn_config(llm):
     print("Applied MiniCPM4 YARN rope_scaling parameters")
 
 
+def create_minicpm4_yarn_callback():
+    """Create a callback function for applying MiniCPM4 YARN configuration
+    
+    This allows the generic cpmcu module to apply MiniCPM4-specific configurations
+    without directly depending on MiniCPM4 code.
+    """
+    def yarn_callback(llm):
+        apply_minicpm4_yarn_config(llm)
+    return yarn_callback
+
+
 def create_minicpm4_config(path_prefix="openbmb", **overrides):
     """Create complete MiniCPM4 configuration with model paths"""
     config = get_minicpm4_default_config()

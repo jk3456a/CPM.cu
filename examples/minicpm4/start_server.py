@@ -90,6 +90,16 @@ def main():
     
     try:
         print("Starting MiniCPM4 server...")
+        
+        # Apply MiniCPM4-specific configurations before server startup
+        if config.get('minicpm4_yarn', False):
+            # Import and apply YARN configuration callback
+            if __package__ is None:
+                from minicpm4.default_config import create_minicpm4_yarn_callback
+            else:
+                from .default_config import create_minicpm4_yarn_callback
+            config['model_init_callback'] = create_minicpm4_yarn_callback()
+        
         # Direct function call instead of subprocess
         launch_server(config)
         return 0

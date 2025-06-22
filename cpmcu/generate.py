@@ -53,61 +53,147 @@ def make_input(tokenizer, args):
     return input_ids.to("cuda", dtype=torch.int32)
 
 
+def print_generation_statistics(decode_length, input_length=None, prefill_time=None, decode_time=None, 
+                               accept_lengths=None):
+    """Print generation statistics - unified function for both streaming and non-streaming"""
+    title = "Generation Summary"
+    separator = "=" * 50
+    
+    print(f"\n{title}")
+    print(separator)
+    
+    # Prefill information
+    if input_length is not None:
+        print(f"Prefill length: {input_length}")
+        if prefill_time is not None and prefill_time > 0:
+            print(f"Prefill time: {prefill_time:.2f} s")
+            print(f"Prefill tokens/s: {input_length / prefill_time:.2f}")
+    
+    # Speculative decoding statistics (without detailed accept lengths)
+    if accept_lengths is not None and len(accept_lengths) > 0:
+        mean_accept_length = sum(accept_lengths) / len(accept_lengths)
+        print(f"Mean accept length: {mean_accept_length:.2f}")
+    
+    # Decode information
+    print(f"Decode length: {decode_length}")
+    
+    if decode_time is not None and decode_time > 0:
+        print(f"Decode time: {decode_time:.2f} s")
+        print(f"Decode tokens/s: {decode_length / decode_time:.2f}")
+    
+
+
+
+
 def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
     """Run streaming generation"""
     print("Starting streaming generation...")
     
-    results = llm.generate(
-        input_ids=input_ids.view(-1),
-        generation_length=config['num_generate'],
-        teminators=terminators,
-        use_stream=True
-    )
-    
-    generated_text = ""
-    for result in results:
-        if isinstance(result, dict) and 'text' in result:
-            text = result['text']
-            print(text, end='', flush=True)
-            generated_text += text
-        elif isinstance(result, str):
-            print(result, end='', flush=True)  
-            generated_text += result
-    
-    print("\nStreaming generation completed!")
-    return generated_text
+    try:
+        results = llm.generate(
+            input_ids=input_ids.view(-1),
+            generation_length=config['num_generate'],
+            teminators=terminators,
+            use_stream=True
+        )
+        
+        generated_text = ""
+        # Collect statistics during streaming
+        prefill_time = None
+        decode_time = None
+        accept_lengths = []
+        
+        # Process streaming results and collect statistics
+        for result in results:
+            if isinstance(result, dict):
+                if 'text' in result:
+                    text = result['text']
+                    print(text, end='', flush=True)
+                    generated_text += text
+                
+                # Extract timing information from each result
+                if 'prefill_time' in result and result['prefill_time'] > 0:
+                    prefill_time = result['prefill_time']
+                if 'decode_time' in result and result['decode_time'] > 0:
+                    decode_time = result['decode_time']
+                if 'accept_length' in result and result['accept_length'] > 0:
+                    accept_lengths.append(result['accept_length'])
+                    
+            elif isinstance(result, str):
+                print(result, end='', flush=True)
+                generated_text += result
+        
+        print("\nStreaming generation completed!")
+        
+        # Print only statistics (without repeating the generated text)
+        input_length = len(input_ids.view(-1))
+        decode_length = len(tokenizer.encode(generated_text, add_special_tokens=False))
+        
+        # Filter accept_lengths based on speculative config
+        final_accept_lengths = accept_lengths if config.get('apply_speculative', False) else None
+        
+        print_generation_statistics(
+            decode_length=decode_length,
+            input_length=input_length,
+            prefill_time=prefill_time,
+            decode_time=decode_time,
+            accept_lengths=final_accept_lengths
+        )
+        
+        return generated_text
+        
+    except Exception as e:
+        print(f"Error during streaming generation: {e}")
+        raise
 
 
 def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
     """Run non-streaming generation"""
     print("Starting non-streaming generation...")
     
-    results = llm.generate(
-        input_ids=input_ids.view(-1),
-        generation_length=config['num_generate'],
-        teminators=terminators,
-        use_stream=False
-    )
-    
-    # Handle different return formats based on model type
-    if config.get('apply_speculative', False):
-        # Speculative models return: (tokens, accept_lengths, decode_time, prefill_time)
-        tokens, accept_lengths, decode_time, prefill_time = results
-    else:
-        # Base models return: (tokens, decode_time, prefill_time)
-        tokens, decode_time, prefill_time = results
-    
-    # Decode the generated tokens
-    generated_text = tokenizer.decode(tokens, skip_special_tokens=True)
-    
-    print(f"Generated text: {generated_text}")
-    print(f"Decode time: {decode_time:.2f}s, Prefill time: {prefill_time:.2f}s")
-    
-    return generated_text
+    try:
+        results = llm.generate(
+            input_ids=input_ids.view(-1),
+            generation_length=config['num_generate'],
+            teminators=terminators,
+            use_stream=False
+        )
+        
+        # Extract tokens and statistics from results
+        input_length = len(input_ids.view(-1))
+        
+        if config.get('apply_speculative', False):
+            tokens, accept_lengths, decode_time, prefill_time = results
+        else:
+            tokens, decode_time, prefill_time = results
+            accept_lengths = None
+        
+        generated_text = tokenizer.decode(tokens, skip_special_tokens=True)
+        
+        # Print generated text and statistics
+        print(f"\n[Generated text]\n{generated_text}")
+        
+        print_generation_statistics(
+            decode_length=len(tokens),
+            input_length=input_length,
+            prefill_time=prefill_time,
+            decode_time=decode_time,
+            accept_lengths=accept_lengths
+        )
+        
+        return generated_text
+        
+    except Exception as e:
+        print(f"Error during non-streaming generation: {e}")
+        raise
 
 
 def run_generation(config):
     """Core generation function that can be called by various frontends"""
+    # Display configuration summary at the start
+    from .args import display_config_summary
+    display_config_summary(config, "Generation Configuration")
+    
     # Create a dummy args object for compatibility with make_input
     class Args:
         def __init__(self, config):
@@ -157,6 +243,13 @@ def run_generation(config):
     print("Initializing model storage...")
     llm.init_storage()
     
+    # Apply model-specific configurations via callback if provided
+    if 'model_init_callback' in config and config['model_init_callback'] is not None:
+        try:
+            config['model_init_callback'](llm)
+        except Exception as e:
+            print(f"Warning: Model initialization callback failed: {e}")
+    
     # Load frequency speculative vocabulary if enabled
     if config.get('apply_speculative', False) and frspec_path:
         if setup_frspec_vocab(llm, frspec_path):
@@ -175,10 +268,6 @@ def run_generation(config):
             generated_text = run_stream_generation(llm, input_ids, config, terminators, tokenizer)
         else:
             generated_text = run_non_stream_generation(llm, input_ids, config, terminators, tokenizer)
-        
-        # Print performance summary if available
-        if hasattr(llm, 'print_perf_summary'):
-            llm.print_perf_summary()
             
         return generated_text
         
@@ -191,13 +280,9 @@ def main():
     # Parse arguments using unified parser
     args, config = parse_test_args()
     
-    # Display configuration summary
-    display_config_summary(config, "Generation Configuration")
-    
     try:
-        # Run generation
+        # Run generation (config summary will be displayed inside)
         generated_text = run_generation(config)
-        print("\nGeneration completed successfully!")
         return 0
     except Exception as e:
         print(f"Generation failed: {e}")

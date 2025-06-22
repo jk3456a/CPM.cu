@@ -154,9 +154,18 @@ def main():
     
     try:
         print("Starting MiniCPM4 generation...")
+        
+        # Apply MiniCPM4-specific configurations before generation
+        if config.get('minicpm4_yarn', False):
+            # Import and apply YARN configuration callback
+            if __package__ is None:
+                from minicpm4.default_config import create_minicpm4_yarn_callback
+            else:
+                from .default_config import create_minicpm4_yarn_callback
+            config['model_init_callback'] = create_minicpm4_yarn_callback()
+        
         # Direct function call instead of subprocess
         generated_text = run_generation(config)
-        print("\nGeneration completed successfully!")
         return 0
     except Exception as e:
         print(f"Generation failed: {e}")

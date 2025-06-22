@@ -63,6 +63,13 @@ async def lifespan(app: FastAPI):
         # Initialize model storage
         model_instance.init_storage()
         
+        # Apply model-specific configurations via callback if provided
+        if 'model_init_callback' in config and config['model_init_callback'] is not None:
+            try:
+                config['model_init_callback'](model_instance)
+            except Exception as e:
+                print(f"Warning: Model initialization callback failed: {e}")
+        
         # Load frequency speculative vocabulary if enabled
         if config.get('apply_speculative', False) and frspec_path:
             print(f"Loading frequency vocabulary from {frspec_path}")
