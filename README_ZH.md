@@ -68,7 +68,8 @@ pip install .
 我们提供了一个简单的示例来展示如何使用 CPM.cu。
 
 ```bash
-python3 tests/test_generate.py --prompt-file <输入文件路径>
+cd tests/
+python3 test_generate.py --prompt-file <输入文件路径>
 ```
 
 如果您不指定模型路径，脚本将从 OpenBMB 的 Hugging Face 仓库加载模型。
@@ -79,8 +80,9 @@ python3 tests/test_generate.py --prompt-file <输入文件路径>
 这个脚本会自动从本仓库中收集代码，并提示模型"Summarize the code."。
 
 ```bash
-python3 tests/long_prompt_gen.py # 生成 prompt.txt (更多细节请见 --help)
-python3 tests/test_generate.py --prompt-file prompt.txt
+cd tests/
+python3 long_prompt_gen.py # 生成 prompt.txt (更多细节请见 --help)
+python3 test_generate.py --prompt-file prompt.txt
 ```
 
 输出应为如下格式：
@@ -115,13 +117,15 @@ Decode tokens/s: 154.59
 启动 OpenAI 兼容的 API 服务器（参数与 `tests/test_generate.py` 相同）：
 
 ```bash
-python tests/start_server.py [options]
+cd tests/
+python start_server.py [options]
 ```
 
 测试 API，支持流式和非流式模式：
 
 ```bash
-python tests/test_openai_api.py [--no-stream]
+cd tests
+python test_openai_api.py [--no-stream]
 ```
 
 目前仅支持 `/v1/chat/completions` 接口，`model` 字段无效。

@@ -68,7 +68,8 @@ Please follow [MiniCPM4's README](https://github.com/openbmb/minicpm) to downloa
 We provide a simple example to show how to use CPM.cu to generate text.
 
 ```bash
-python3 tests/test_generate.py --prompt-file <your prompt file>
+cd tests/
+python3 test_generate.py --prompt-file <your prompt file>
 ```
 
 If you don't ​​specify​​ the model path, the scripts will load the model from ​​OpenBMB's Hugging Face repository​​.
@@ -79,8 +80,9 @@ We also provide a script, `tests/long_prompt_gen.py`, to generate ​​long cod
 This script ​​automatically collects code from this repository​​ and prompts ​​the model to "Summarize the code."​
 
 ```bash
-python3 tests/long_prompt_gen.py # generate prompt.txt (for more details, use --help)
-python3 tests/test_generate.py --prompt-file prompt.txt
+cd tests/
+python3 long_prompt_gen.py # generate prompt.txt (for more details, use --help)
+python3 test_generate.py --prompt-file prompt.txt
 ```
 
 The output should be of the following format:
@@ -115,13 +117,15 @@ Where:
 Start the OpenAI-compatible API server (same args as `tests/test_generate.py`):
 
 ```bash
-python tests/start_server.py [options]
+cd tests/
+python start_server.py [options]
 ```
 
 Test the API (supports streaming and non-streaming modes):
 
 ```bash
-python tests/test_openai_api.py [--no-stream]
+cd tests/
+python test_openai_api.py [--no-stream]
 ```
 
 Only `/v1/chat/completions` is supported and the `model` field is ignored.
