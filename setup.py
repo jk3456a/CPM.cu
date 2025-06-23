@@ -75,18 +75,19 @@ def check_dependencies():
     # Predefined suggestion texts
     TORCH_INSTALL = "Please install PyTorch with version >=2.0.0 using: pip install 'torch>=2.0.0'"
     NINJA_INSTALL = "Please install Ninja with version >=1.10.0 using: pip install 'ninja>=1.10.0'"
-    JETSON_TORCH = """If you are using Jetson, please install Jetson-specific Torch:
-   You can find Torch versions compatible with your Jetson device at https://pypi.jetson-ai-lab.dev.
-   For example: pip install 'torch>=2.0.0' --index-url https://pypi.jetson-ai-lab.dev/jp6/cu126
-   Alternatively, you can use jetson-containers at https://github.com/dusty-nv/jetson-containers"""
-    CUDA_ARCH_ENV = """Please ensure your machine has a GPU and check your driver installation. 
-   If you are building without a local GPU,
-   please set environment variable CPMCU_CUDA_ARCH to specify target architecture.
-   For details, run: python setup.py --help-config"""
-    CUDA_ARCH_FORMAT = """CPMCU_CUDA_ARCH should contain comma-separated CUDA compute capability numbers.
-    Supported architectures: 80-120 (Ampere and newer generations).
-    Examples: CPMCU_CUDA_ARCH=80 (for A100), CPMCU_CUDA_ARCH=87 (for Jetson Orin), CPMCU_CUDA_ARCH=80,87 (for mixed)
-    For details, run: python setup.py --help-config"""
+    JETSON_TORCH = """For Jetson devices: pip install 'torch>=2.0.0' --index-url https://pypi.jetson-ai-lab.dev/jp6/cu126
+   Find compatible versions at: https://pypi.jetson-ai-lab.dev
+   Alternative: Use jetson-containers at https://github.com/dusty-nv/jetson-containers"""
+    BLACKWELL_TORCH = """For new GPUs (RTX 5090/5070Ti): pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128
+   Latest info: https://pytorch.org/get-started/locally/"""
+    CUDA_ARCH_ENV = """Check GPU/driver installation first. Verify: python -c "import torch; print(torch.cuda.is_available())"
+   IMPORTANT: Do NOT use CPMCU_CUDA_ARCH to bypass GPU detection issues.
+   CPMCU_CUDA_ARCH is only for cross-platform builds without local GPU access.
+   Details: python setup.py --help-config"""
+    CUDA_ARCH_FORMAT = """WARNING: CPMCU_CUDA_ARCH is ONLY for cross-platform builds, NOT for fixing GPU detection!
+   Format: comma-separated compute capability numbers (80-120)
+   Common targets: A100 (80), Jetson Orin (87), RTX 5090 (120)  
+   Details: python setup.py --help-config"""
     
     # Check PyTorch version
     try:
@@ -98,11 +99,11 @@ def check_dependencies():
         
         if major < 2:
             error = f"PyTorch version {torch_version} is too old. Required: >=2.0.0"
-            suggestions = [TORCH_INSTALL, JETSON_TORCH]
+            suggestions = [TORCH_INSTALL, BLACKWELL_TORCH, JETSON_TORCH]
             error_suggestion_pairs.append((error, suggestions))
     except ImportError:
         error = "PyTorch is not installed. Required: torch>=2.0.0"
-        suggestions = [TORCH_INSTALL, JETSON_TORCH]
+        suggestions = [TORCH_INSTALL, BLACKWELL_TORCH, JETSON_TORCH]
         error_suggestion_pairs.append((error, suggestions))
     except Exception as e:
         error = f"Failed to check PyTorch version: {e}"
@@ -141,7 +142,7 @@ def check_dependencies():
         elif error_category in ["CUDA_UNAVAILABLE", "CUDA_DETECT"]:
             # CUDA detection/availability errors
             error = error_message
-            suggestions = [CUDA_ARCH_ENV, JETSON_TORCH]
+            suggestions = [CUDA_ARCH_ENV, BLACKWELL_TORCH, JETSON_TORCH]
             error_suggestion_pairs.append((error, suggestions))
         elif error_category in ["TORCH_MISSING"]:
             # Skip TORCH_MISSING errors as they are already handled in PyTorch version check
@@ -149,7 +150,7 @@ def check_dependencies():
         else:
             # Fallback for unexpected error categories
             error = f"CUDA setup error: {error_message}"
-            suggestions = [CUDA_ARCH_ENV, JETSON_TORCH]
+            suggestions = [CUDA_ARCH_ENV, BLACKWELL_TORCH, JETSON_TORCH]
             error_suggestion_pairs.append((error, suggestions))
     else:
         # Success - print the success message
@@ -196,8 +197,12 @@ CUDA ARCHITECTURE CONFIGURATION:
                              * 87: Jetson Orin
                              * 89: RTX 4090, RTX 4080
                              * 90: H100, H800
+                             * 120: RTX 5090, RTX 5070Ti (Blackwell)
                            - If not set, will auto-detect from available GPU devices
-                           - Required if building without local GPU access
+                           WARNING: This should ONLY be used for cross-platform builds!
+                           - Do NOT use this to bypass GPU detection issues - usually indicates
+                             incorrect PyTorch installation (see troubleshooting above)
+                           - Only required when building wheel packages without local GPU access
 
 COMPILATION MODE CONTROL:
   CPMCU_DEBUG=1            Enable debug build (default: 0)
@@ -227,11 +232,11 @@ COMMON BUILD SCENARIOS:
   2. Debug build with both data types:
      CPMCU_DEBUG=1 CPMCU_DTYPE=fp16,bf16 pip install .
 
-  3. Build for specific GPU without local access:
-     CPMCU_CUDA_ARCH=80 pip install . # For A100
-
-  4. Performance monitoring build:
+  3. Performance monitoring build:
      CPMCU_PERF=1 pip install .
+
+  4. Cross-platform wheel build (NO local GPU):
+     CPMCU_CUDA_ARCH=80 pip install . # For A100 target
 
 For more information, visit: https://github.com/OpenBMB/CPM.cu
 
