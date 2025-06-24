@@ -29,26 +29,24 @@ from .api_models import (
     HealthResponse
 )
 from .utils import (
-    get_default_config,
     setup_model_paths,
-    create_model,
+    ModelFactory,
     setup_frspec_vocab
 )
-from .args import parse_server_args, display_config_summary
+from .args import parse_server_args, ConfigurationDisplay
 
 # Global model instance
 model_instance: Optional[LLM] = None
 model_config: Dict[str, Any] = {}
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Manage application lifecycle - load model on startup"""
-    global model_instance, model_config
+
+class ModelInitializer:
+    """统一的模型初始化管理类"""
     
-    print(f"Loading model with configuration:")
-    
-    try:
-        config = model_config['config']
+    @staticmethod
+    def initialize_model(config: Dict[str, Any]) -> LLM:
+        """统一的模型初始化流程"""
+        print(f"Loading model with configuration:")
         
         # Setup model paths
         model_path, draft_model_path, frspec_path = setup_model_paths(config)
@@ -58,7 +56,7 @@ async def lifespan(app: FastAPI):
             print(f"Draft model path: {draft_model_path}")
         
         # Create model instance
-        model_instance = create_model(model_path, draft_model_path, config)
+        model_instance = ModelFactory.create_model(model_path, draft_model_path, config)
         
         # Initialize model storage
         model_instance.init_storage()
@@ -73,12 +71,27 @@ async def lifespan(app: FastAPI):
         # Load frequency speculative vocabulary if enabled
         if config.get('apply_speculative', False) and frspec_path:
             print(f"Loading frequency vocabulary from {frspec_path}")
-            setup_frspec_vocab(model_instance, frspec_path, config.get('frspec_vocab_size', 32768))
+            if setup_frspec_vocab(model_instance, frspec_path, config.get('frspec_vocab_size', 32768)):
+                print("Frequency vocabulary loaded successfully")
+            else:
+                print("Warning: Could not load frequency vocabulary")
         
         # Load model weights
+        print("Loading model weights...")
         model_instance.load_from_hf()
-        
         print("Model loaded successfully!")
+        
+        return model_instance
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifecycle - load model on startup"""
+    global model_instance, model_config
+    
+    try:
+        config = model_config['config']
+        model_instance = ModelInitializer.initialize_model(config)
         
     except Exception as e:
         print(f"Failed to load model: {e}")
@@ -89,6 +102,7 @@ async def lifespan(app: FastAPI):
     # Cleanup
     print("Shutting down...")
     model_instance = None
+
 
 # Create FastAPI app
 app = FastAPI(
@@ -107,29 +121,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def format_messages_to_prompt(messages: list, tokenizer) -> str:
-    """Convert OpenAI messages format to a single prompt string using chat template"""
+
+class MessageProcessor:
+    """统一的消息处理类"""
     
-    # Convert OpenAI messages format to the format expected by chat template
-    chat_messages = []
+    @staticmethod
+    def format_messages_to_prompt(messages: list, tokenizer) -> str:
+        """Convert OpenAI messages format to a single prompt string using chat template"""
+        
+        # Convert OpenAI messages format to the format expected by chat template
+        chat_messages = []
+        
+        for message in messages:
+            chat_messages.append({
+                "role": message.role,
+                "content": message.content
+            })
+        
+        # Use tokenizer's chat template to format the prompt
+        try:
+            prompt = tokenizer.apply_chat_template(
+                chat_messages, 
+                tokenize=False, 
+                add_generation_prompt=True
+            )
+            return prompt
+        except Exception as e:
+            # Fallback to simple formatting if chat template fails
+            print(f"Warning: Chat template failed ({e}), falling back to simple formatting")
+            return MessageProcessor._simple_format_fallback(messages)
     
-    for message in messages:
-        chat_messages.append({
-            "role": message.role,
-            "content": message.content
-        })
-    
-    # Use tokenizer's chat template to format the prompt
-    try:
-        prompt = tokenizer.apply_chat_template(
-            chat_messages, 
-            tokenize=False, 
-            add_generation_prompt=True
-        )
-        return prompt
-    except Exception as e:
-        # Fallback to simple formatting if chat template fails
-        print(f"Warning: Chat template failed ({e}), falling back to simple formatting")
+    @staticmethod
+    def _simple_format_fallback(messages: list) -> str:
+        """简单格式化回退方案"""
         prompt_parts = []
         
         for message in messages:
@@ -147,27 +171,29 @@ def format_messages_to_prompt(messages: list, tokenizer) -> str:
         prompt_parts.append("Assistant:")
         
         return "\n".join(prompt_parts)
+    
+    @staticmethod
+    def get_stop_tokens(stop_param: Optional[Union[str, list]] = None) -> list:
+        """Convert stop parameter to token IDs"""
+        if not stop_param:
+            return []
+        
+        if isinstance(stop_param, str):
+            stop_list = [stop_param]
+        else:
+            stop_list = stop_param
+        
+        # Convert to token IDs using tokenizer
+        stop_token_ids = []
+        for stop_str in stop_list:
+            try:
+                tokens = model_instance.tokenizer.encode(stop_str, add_special_tokens=False)
+                stop_token_ids.extend(tokens)
+            except:
+                pass
+        
+        return stop_token_ids
 
-def get_stop_tokens(stop_param: Optional[Union[str, list]] = None) -> list:
-    """Convert stop parameter to token IDs"""
-    if not stop_param:
-        return []
-    
-    if isinstance(stop_param, str):
-        stop_list = [stop_param]
-    else:
-        stop_list = stop_param
-    
-    # Convert to token IDs using tokenizer
-    stop_token_ids = []
-    for stop_str in stop_list:
-        try:
-            tokens = model_instance.tokenizer.encode(stop_str, add_special_tokens=False)
-            stop_token_ids.extend(tokens)
-        except:
-            pass
-    
-    return stop_token_ids
 
 @app.get("/health")
 async def health_check():
@@ -176,6 +202,7 @@ async def health_check():
         model_loaded=model_instance is not None,
         memory_usage=f"{torch.cuda.memory_allocated() / 1024**3:.2f}GB" if torch.cuda.is_available() else None
     )
+
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
@@ -195,14 +222,14 @@ async def chat_completions(request: ChatCompletionRequest):
             raise HTTPException(status_code=500, detail="Tokenizer not available")
         
         # Format messages to prompt using chat template
-        prompt = format_messages_to_prompt(request.messages, tokenizer)
+        prompt = MessageProcessor.format_messages_to_prompt(request.messages, tokenizer)
         
         # Tokenize input
         input_ids = tokenizer.encode(prompt, return_tensors="pt", add_special_tokens=False)
         input_ids = input_ids.to(torch.int32).cuda()
         
         # Get stop token IDs and add EOS token if use_terminators is enabled
-        stop_tokens = get_stop_tokens(request.stop)
+        stop_tokens = MessageProcessor.get_stop_tokens(request.stop)
         config = model_config['config']
         if config.get('use_terminators', True):
             if tokenizer.eos_token_id not in stop_tokens:
@@ -245,6 +272,7 @@ async def chat_completions(request: ChatCompletionRequest):
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
+
 
 async def generate_chat_completion(
     input_ids: torch.Tensor, 
@@ -304,6 +332,7 @@ async def generate_chat_completion(
             "total_tokens": input_ids.numel() + len(tokens)
         }
     )
+
 
 async def stream_chat_completion(
     input_ids: torch.Tensor,
@@ -406,6 +435,7 @@ async def stream_chat_completion(
     yield "data: [DONE]\n\n"
     await asyncio.sleep(0)
 
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler"""
@@ -420,12 +450,12 @@ async def global_exception_handler(request: Request, exc: Exception):
         ).model_dump()
     )
 
+
 def launch_server(config: Dict[str, Any]):
     """Launch server with given configuration"""
-    from .args import display_config_summary
     
     # Display configuration summary
-    display_config_summary(config, "Server Configuration")
+    ConfigurationDisplay.display_config_summary(config, "Server Configuration")
     
     # Set global model config
     global model_config
@@ -440,6 +470,7 @@ def launch_server(config: Dict[str, Any]):
         log_level="info"
     )
 
+
 def main():
     """Server entry point using unified argument processing"""
     from .args import parse_server_args
@@ -449,6 +480,7 @@ def main():
     
     # Launch server
     launch_server(config)
+
 
 if __name__ == "__main__":
     main() 

@@ -9,14 +9,79 @@ This module contains the main generation logic used by various frontends.
 import os
 import sys
 import torch
+from functools import wraps
 from transformers import AutoTokenizer
 
 from .utils import (
     setup_model_paths,
-    create_model,
+    ModelFactory,
     setup_frspec_vocab
 )
-from .args import parse_test_args, display_config_summary
+from .args import parse_test_args, ConfigurationDisplay
+
+
+def generation_error_handler(func):
+    """Decorator for unified error handling in generation functions"""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            print(f"Error during {func.__name__.replace('_', ' ')}: {e}")
+            raise RuntimeError(f"Error during {func.__name__.replace('_', ' ')}: {e}")
+    return wrapper
+
+
+class GenerationStatistics:
+    """统一的生成统计处理类"""
+    
+    def __init__(self, input_length=None):
+        self.input_length = input_length
+        self.decode_length = 0
+        self.prefill_time = None
+        self.decode_time = None
+        self.accept_lengths = []
+    
+    def update_from_result(self, result, has_speculative=False):
+        """从生成结果更新统计信息"""
+        if isinstance(result, dict):
+            if 'prefill_time' in result and result['prefill_time'] > 0:
+                self.prefill_time = result['prefill_time']
+            if 'decode_time' in result and result['decode_time'] > 0:
+                self.decode_time = result['decode_time']
+            if 'accept_length' in result and result['accept_length'] > 0:
+                self.accept_lengths.append(result['accept_length'])
+    
+    def set_decode_length(self, length):
+        """设置解码长度"""
+        self.decode_length = length
+    
+    def print_summary(self, has_speculative=False):
+        """打印生成统计摘要"""
+        title = "Generation Summary"
+        separator = "=" * 50
+        
+        print(f"\n{title}")
+        print(separator)
+        
+        # Prefill information
+        if self.input_length is not None:
+            print(f"Prefill length: {self.input_length}")
+            if self.prefill_time is not None and self.prefill_time > 0:
+                print(f"Prefill time: {self.prefill_time:.2f} s")
+                print(f"Prefill tokens/s: {self.input_length / self.prefill_time:.2f}")
+        
+        # Speculative decoding statistics
+        if has_speculative and self.accept_lengths:
+            mean_accept_length = sum(self.accept_lengths) / len(self.accept_lengths)
+            print(f"Mean accept length: {mean_accept_length:.2f}")
+        
+        # Decode information
+        print(f"Decode length: {self.decode_length}")
+        
+        if self.decode_time is not None and self.decode_time > 0:
+            print(f"Decode time: {self.decode_time:.2f} s")
+            print(f"Decode tokens/s: {self.decode_length / self.decode_time:.2f}")
 
 
 def make_input(tokenizer, args):
@@ -39,7 +104,6 @@ def make_input(tokenizer, args):
                 tokenize=False, 
                 add_generation_prompt=True
             )
-            print("Applied chat template")
         except Exception as e:
             print(f"Warning: Failed to apply chat template: {e}, using raw prompt")
             prompt = prompt_content
@@ -53,143 +117,91 @@ def make_input(tokenizer, args):
     return input_ids.to("cuda", dtype=torch.int32)
 
 
-def print_generation_statistics(decode_length, input_length=None, prefill_time=None, decode_time=None, 
-                               accept_lengths=None):
-    """Print generation statistics - unified function for both streaming and non-streaming"""
-    title = "Generation Summary"
-    separator = "=" * 50
-    
-    print(f"\n{title}")
-    print(separator)
-    
-    # Prefill information
-    if input_length is not None:
-        print(f"Prefill length: {input_length}")
-        if prefill_time is not None and prefill_time > 0:
-            print(f"Prefill time: {prefill_time:.2f} s")
-            print(f"Prefill tokens/s: {input_length / prefill_time:.2f}")
-    
-    # Speculative decoding statistics (without detailed accept lengths)
-    if accept_lengths is not None and len(accept_lengths) > 0:
-        mean_accept_length = sum(accept_lengths) / len(accept_lengths)
-        print(f"Mean accept length: {mean_accept_length:.2f}")
-    
-    # Decode information
-    print(f"Decode length: {decode_length}")
-    
-    if decode_time is not None and decode_time > 0:
-        print(f"Decode time: {decode_time:.2f} s")
-        print(f"Decode tokens/s: {decode_length / decode_time:.2f}")
-
-
+@generation_error_handler
 def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
     """Run streaming generation"""
     print("Starting streaming generation...")
     
-    try:
-        results = llm.generate(
-            input_ids=input_ids.view(-1),
-            generation_length=config['num_generate'],
-            teminators=terminators,
-            use_stream=True
-        )
-        
-        generated_text = ""
-        # Collect statistics during streaming
-        prefill_time = None
-        decode_time = None
-        accept_lengths = []
-        
-        # Process streaming results and collect statistics
-        for result in results:
-            if isinstance(result, dict):
-                if 'text' in result:
-                    text = result['text']
-                    print(text, end='', flush=True)
-                    generated_text += text
+    results = llm.generate(
+        input_ids=input_ids.view(-1),
+        generation_length=config['num_generate'],
+        teminators=terminators,
+        use_stream=True
+    )
+    
+    generated_text = ""
+    stats = GenerationStatistics(input_length=len(input_ids.view(-1)))
+    has_speculative = config.get('draft_model_path') is not None
+    
+    # Process streaming results and collect statistics
+    for result in results:
+        if isinstance(result, dict):
+            if 'text' in result:
+                text = result['text']
+                print(text, end='', flush=True)
+                generated_text += text
+            
+            # Update statistics from each result
+            stats.update_from_result(result, has_speculative)
                 
-                # Extract timing information from each result
-                if 'prefill_time' in result and result['prefill_time'] > 0:
-                    prefill_time = result['prefill_time']
-                if 'decode_time' in result and result['decode_time'] > 0:
-                    decode_time = result['decode_time']
-                if 'accept_length' in result and result['accept_length'] > 0:
-                    accept_lengths.append(result['accept_length'])
-                    
-            elif isinstance(result, str):
-                print(result, end='', flush=True)
-                generated_text += result
-        
-        print("\nStreaming generation completed!")
-        
-        # Print only statistics (without repeating the generated text)
-        input_length = len(input_ids.view(-1))
-        decode_length = len(tokenizer.encode(generated_text, add_special_tokens=False))
-        
-        # Filter accept_lengths based on speculative config
-        final_accept_lengths = accept_lengths if config.get('apply_speculative', False) else None
-        
-        print_generation_statistics(
-            decode_length=decode_length,
-            input_length=input_length,
-            prefill_time=prefill_time,
-            decode_time=decode_time,
-            accept_lengths=final_accept_lengths
-        )
-        
-        return generated_text
-        
-    except Exception as e:
-        print(f"Error during streaming generation: {e}")
-        raise
+        elif isinstance(result, str):
+            print(result, end='', flush=True)
+            generated_text += result
+    
+    print("\nStreaming generation completed!")
+    
+    # Set decode length and print statistics
+    decode_length = len(tokenizer.encode(generated_text, add_special_tokens=False))
+    stats.set_decode_length(decode_length)
+    stats.print_summary(has_speculative)
+    
+    return generated_text
 
 
+@generation_error_handler
 def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
     """Run non-streaming generation"""
     print("Starting non-streaming generation...")
     
-    try:
-        results = llm.generate(
-            input_ids=input_ids.view(-1),
-            generation_length=config['num_generate'],
-            teminators=terminators,
-            use_stream=False
-        )
-        
-        # Extract tokens and statistics from results
-        input_length = len(input_ids.view(-1))
-        
-        if config.get('apply_speculative', False):
-            tokens, accept_lengths, decode_time, prefill_time = results
-        else:
-            tokens, decode_time, prefill_time = results
-            accept_lengths = None
-        
-        generated_text = tokenizer.decode(tokens, skip_special_tokens=True)
-        
-        # Print generated text and statistics
-        print(f"\n[Generated text]\n{generated_text}")
-        
-        print_generation_statistics(
-            decode_length=len(tokens),
-            input_length=input_length,
-            prefill_time=prefill_time,
-            decode_time=decode_time,
-            accept_lengths=accept_lengths
-        )
-        
-        return generated_text
-        
-    except Exception as e:
-        print(f"Error during non-streaming generation: {e}")
-        raise
+    results = llm.generate(
+        input_ids=input_ids.view(-1),
+        generation_length=config['num_generate'],
+        teminators=terminators,
+        use_stream=False
+    )
+    
+    # Extract tokens and statistics from results
+    input_length = len(input_ids.view(-1))
+    has_speculative = config.get('draft_model_path') is not None
+    
+    if has_speculative:
+        tokens, accept_lengths, decode_time, prefill_time = results
+    else:
+        tokens, decode_time, prefill_time = results
+        accept_lengths = None
+    
+    generated_text = tokenizer.decode(tokens, skip_special_tokens=True)
+    
+    # Print generated text and statistics
+    print(f"\n[Generated text]\n{generated_text}")
+    
+    # Create and populate statistics
+    stats = GenerationStatistics(input_length=input_length)
+    stats.set_decode_length(len(tokens))
+    stats.prefill_time = prefill_time
+    stats.decode_time = decode_time
+    if accept_lengths:
+        stats.accept_lengths = accept_lengths
+    
+    stats.print_summary(has_speculative)
+    
+    return generated_text
 
 
 def run_generation(config):
     """Core generation function that can be called by various frontends"""
     # Display configuration summary at the start
-    from .args import display_config_summary
-    display_config_summary(config, "Generation Configuration")
+    ConfigurationDisplay.display_config_summary(config, "Generation Configuration")
     
     # Create a dummy args object for compatibility with make_input
     class Args:
@@ -219,7 +231,7 @@ def run_generation(config):
     
     # Create model
     try:
-        llm = create_model(model_path, draft_model_path, config)
+        llm = ModelFactory.create_model(model_path, draft_model_path, config)
         print(f"Created model: {type(llm).__name__}")
     except Exception as e:
         raise RuntimeError(f"Error creating model: {e}")
@@ -247,8 +259,9 @@ def run_generation(config):
         except Exception as e:
             print(f"Warning: Model initialization callback failed: {e}")
     
-    # Load frequency speculative vocabulary if enabled
-    if config.get('apply_speculative', False) and frspec_path:
+    # Load frequency speculative vocabulary if enabled (draft model exists)
+    has_speculative = config.get('draft_model_path') is not None
+    if has_speculative and frspec_path:
         if setup_frspec_vocab(llm, frspec_path, config.get('frspec_vocab_size', 32768)):
             print("Loaded frequency speculative vocabulary")
         else:

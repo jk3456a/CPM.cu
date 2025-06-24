@@ -146,31 +146,35 @@ def create_test_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def args_to_config(args, is_server: bool = False) -> Dict[str, Any]:
-    """Convert parsed arguments to configuration dictionary"""
-    config = {}
+class ConfigurationProcessor:
+    """统一的配置处理类"""
     
-    # Convert all argument attributes to config
-    for key, value in vars(args).items():
-        # Handle dtype conversion
-        if key == 'dtype':
-            if is_server:
-                # Server keeps string format for JSON serialization
-                config[key] = value
+    @staticmethod
+    def args_to_config(args, is_server: bool = False) -> Dict[str, Any]:
+        """Convert parsed arguments to configuration dictionary"""
+        config = {}
+        
+        # Convert all argument attributes to config
+        for key, value in vars(args).items():
+            if key == 'dtype':
+                # Handle dtype conversion
+                if is_server:
+                    # Server keeps string format for JSON compatibility
+                    config[key] = value
+                else:
+                    # Test script converts to torch type
+                    config[key] = torch.float16 if value == 'float16' else torch.bfloat16
             else:
-                # Test script converts to torch type
-                config[key] = torch.float16 if value == 'float16' else torch.bfloat16
-        else:
-            config[key] = value
-    
-    return config
+                config[key] = value
+        
+        return config
 
 
 def parse_server_args() -> Tuple[argparse.Namespace, Dict[str, Any]]:
     """Parse server arguments"""
     parser = create_server_parser()
     args = parser.parse_args()
-    config = args_to_config(args, is_server=True)
+    config = ConfigurationProcessor.args_to_config(args, is_server=True)
     return args, config
 
 
@@ -178,54 +182,113 @@ def parse_test_args() -> Tuple[argparse.Namespace, Dict[str, Any]]:
     """Parse test arguments"""
     parser = create_test_parser()
     args = parser.parse_args()
-    config = args_to_config(args, is_server=False)
+    config = ConfigurationProcessor.args_to_config(args, is_server=False)
     return args, config
 
 
-def display_config_summary(config: Dict[str, Any], title: str = "Configuration Parameters"):
-    """Display configuration parameter summary
+class ConfigurationDisplay:
+    """统一的配置显示类"""
     
-    Args:
-        config: Configuration dictionary
-        title: Display title, default is "Configuration Parameters"
-    """
-    print("=" * 50)
-    print(f"{title}:")
-    print("=" * 50)
+    @staticmethod
+    def display_config_summary(config: Dict[str, Any], title: str = "Configuration Parameters"):
+        """Display configuration parameter summary with improved formatting"""
+        print("=" * 50)
+        print(f"{title}:")
+        print("=" * 50)
+        
+        # Model information section
+        ConfigurationDisplay._display_model_info(config)
+        
+        # Features section
+        ConfigurationDisplay._display_features(config)
+        
+        # Generation parameters section
+        ConfigurationDisplay._display_generation_params(config)
+        
+        # Sampling parameters section
+        ConfigurationDisplay._display_sampling_params(config)
+        
+        # Demo parameters section
+        ConfigurationDisplay._display_demo_params(config)
+        
+        # System parameters section
+        ConfigurationDisplay._display_system_params(config)
+        
+        # Conditional sections
+        if config.get('apply_sparse', False):
+            ConfigurationDisplay._display_sparse_params(config)
+        
+        ConfigurationDisplay._display_spec_params(config)
+        
+        print("=" * 50)
+        print()
     
-    # Basic model info
-    print(f"Model: {config.get('model_path', 'N/A')}")
-    if config.get('draft_model_path'):
-        print(f"Draft Model: {config['draft_model_path']}")
-    if config.get('frspec_path'):
-        print(f"FRSpec: {config['frspec_path']}")
+    @staticmethod
+    def _display_model_info(config):
+        """显示模型信息"""
+        print(f"Model: {config.get('model_path', 'N/A')}")
+        if config.get('draft_model_path'):
+            print(f"Draft Model: {config['draft_model_path']}")
+        if config.get('frspec_path'):
+            print(f"FRSpec: {config['frspec_path']}")
     
-    # Basic features
-    print(f"Features: speculative=auto, quant=auto, sparse={config.get('apply_sparse', False)}")
+    @staticmethod
+    def _display_features(config):
+        """显示功能特性"""
+        print(f"Features: speculative=auto, quant=auto, sparse={config.get('apply_sparse', False)}")
     
-    # Generation parameters (display content based on whether these keys exist in config)
-    generation_parts = [f"chunk_length={config['chunk_length']}", f"use_terminators={config['use_terminators']}"]
-    if 'num_generate' in config:
-        generation_parts.insert(0, f"num_generate={config['num_generate']}")
-    if 'use_stream' in config:
-        generation_parts.append(f"use_stream={config['use_stream']}")
-    print(f"Generation: {', '.join(generation_parts)}")
+    @staticmethod
+    def _display_generation_params(config):
+        """显示生成参数"""
+        generation_parts = [f"chunk_length={config['chunk_length']}"]
+        if 'use_terminators' in config:
+            generation_parts.append(f"use_terminators={config['use_terminators']}")
+        if 'num_generate' in config:
+            generation_parts.insert(0, f"num_generate={config['num_generate']}")
+        if 'use_stream' in config:
+            generation_parts.append(f"use_stream={config['use_stream']}")
+        print(f"Generation: {', '.join(generation_parts)}")
     
-    # Sampling parameters
-    print(f"Sampling: temperature={config['temperature']}, random_seed={config['random_seed']}")
+    @staticmethod
+    def _display_sampling_params(config):
+        """显示采样参数"""
+        print(f"Sampling: temperature={config['temperature']}, random_seed={config['random_seed']}")
     
-    # Demo parameters
-    print(f"Demo: use_enter={config['use_enter']}, use_decode_enter={config['use_decode_enter']}")
+    @staticmethod
+    def _display_demo_params(config):
+        """显示演示参数"""
+        demo_parts = []
+        if 'use_enter' in config:
+            demo_parts.append(f"use_enter={config['use_enter']}")
+        if 'use_decode_enter' in config:
+            demo_parts.append(f"use_decode_enter={config['use_decode_enter']}")
+        if demo_parts:
+            print(f"Demo: {', '.join(demo_parts)}")
     
-    # Other parameters
-    print(f"Others: dtype={config['dtype']}, cuda_graph={config['cuda_graph']}, memory_limit={config['memory_limit']}")
+    @staticmethod
+    def _display_system_params(config):
+        """显示系统参数"""
+        print(f"Others: dtype={config['dtype']}, cuda_graph={config['cuda_graph']}, memory_limit={config['memory_limit']}")
     
-    # Conditionally display sparse attention parameters
-    if config.get('apply_sparse', False):
-        print(f"Sparse Attention: sink_window={config['sink_window_size']}, block_window={config['block_window_size']}, sparse_topk_k={config['sparse_topk_k']}, sparse_switch={config['sparse_switch']}, compress_lse={config['apply_compress_lse']}")
+    @staticmethod
+    def _display_sparse_params(config):
+        """显示稀疏注意力参数"""
+        sparse_parts = [
+            f"sink_window={config['sink_window_size']}",
+            f"block_window={config['block_window_size']}",
+            f"sparse_topk_k={config['sparse_topk_k']}",
+            f"sparse_switch={config['sparse_switch']}",
+            f"compress_lse={config['apply_compress_lse']}"
+        ]
+        print(f"Sparse Attention: {', '.join(sparse_parts)}")
     
-    # Display speculative decoding parameters
-    print(f"Speculative: num_iter={config.get('spec_num_iter', 2)}, topk_per_iter={config.get('spec_topk_per_iter', 10)}, tree_size={config.get('spec_tree_size', 12)}, frspec_vocab_size={config.get('frspec_vocab_size', 32768)}")
-    
-    print("=" * 50)
-    print() 
+    @staticmethod
+    def _display_spec_params(config):
+        """显示投机解码参数"""
+        spec_parts = [
+            f"num_iter={config.get('spec_num_iter', 2)}",
+            f"topk_per_iter={config.get('spec_topk_per_iter', 10)}",
+            f"tree_size={config.get('spec_tree_size', 12)}",
+            f"frspec_vocab_size={config.get('frspec_vocab_size', 32768)}"
+        ]
+        print(f"Speculative: {', '.join(spec_parts)}") 

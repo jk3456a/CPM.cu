@@ -212,7 +212,7 @@ checkpoints/*
 !checkpoints/.gitkeep
 
 # Cursor Rules
-.mdc
+.cursor/rules/*.mdc
 
 # FR-Spec Index
 fr_index
