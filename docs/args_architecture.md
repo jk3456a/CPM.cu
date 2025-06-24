@@ -72,7 +72,7 @@ Arguments are logically organized into the following groups:
 | **Generation** | `--temperature`, `--use-stream`, `--use-terminators`, `--use-chat-template`, `--num-generate` | Text generation settings |
 | **Server** | `--host`, `--port` | Server deployment settings |
 | **Test** | `--prompt-file`, `--prompt-text`, `--use-enter` (deprecated), `--use-decode-enter` (deprecated) | Test-specific parameters |
-| **MiniCPM4** | `--path-prefix`, `--apply-quant`, `--apply-eagle`, `--apply-eagle-quant`, `--minicpm4-yarn` | MiniCPM4-exclusive parameters |
+| **MiniCPM4** | `--apply-quant`, `--apply-eagle`, `--apply-eagle-quant`, `--minicpm4-yarn` | MiniCPM4-exclusive parameters |
 
 ## Configuration Processing
 
@@ -117,7 +117,6 @@ if __name__ == "__main__": main()
 - Integrated haystack prompt generation
 - Additional MiniCPM4-exclusive arguments:
   ```python
-  --path-prefix: Model repository prefix (default: openbmb)
   --apply-quant: Enable quantization for base model (auto-detected from model path)
   --apply-eagle: Enable Eagle speculative decoding (auto-detected when draft model provided)
   --apply-eagle-quant: Enable quantization for Eagle draft model (auto-detected from draft model path)

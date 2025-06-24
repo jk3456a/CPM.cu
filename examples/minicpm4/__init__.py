@@ -1,27 +1,19 @@
 """
 MiniCPM4 Example Package
 
-This package contains MiniCPM4-specific configurations and examples.
+Essential utilities for MiniCPM4 model configuration.
 """
 
 from .utils import (
-    apply_minicpm4_defaults,
-    get_minicpm4_model_paths,
+    setup_minicpm4_paths,
+    create_minicpm4_parser,
     apply_minicpm4_yarn_config,
-    get_minicpm4_yarn_factors,
-    create_minicpm4_config,
-    create_minicpm4_server_parser,
-    create_minicpm4_test_parser,
-    generate_haystack_prompt
+    create_minicpm4_yarn_callback
 )
 
 __all__ = [
-    'apply_minicpm4_defaults',
-    'get_minicpm4_model_paths', 
+    'setup_minicpm4_paths',
+    'create_minicpm4_parser',
     'apply_minicpm4_yarn_config',
-    'get_minicpm4_yarn_factors',
-    'create_minicpm4_config',
-    'create_minicpm4_server_parser',
-    'create_minicpm4_test_parser',
-    'generate_haystack_prompt'
+    'create_minicpm4_yarn_callback'
 ] 

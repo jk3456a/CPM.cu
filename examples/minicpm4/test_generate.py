@@ -1,83 +1,69 @@
 #!/usr/bin/env python3
 """
-MiniCPM4 Test Generation Script
+MiniCPM4 Test Generation Launcher
 
-Optimized test script for MiniCPM4 models with YARN support and default configurations.
+MiniCPM4-optimized test generation launcher that parses MiniCPM4-specific parameters 
+and forwards all other arguments to the core generation module.
 """
 
-import argparse
 import sys
+import subprocess
 from pathlib import Path
-
-# Smart import handling - supports both execution modes
-if __package__ is None:
-    # Direct script execution - add parent to path
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from minicpm4.utils import create_minicpm4_config, create_minicpm4_test_parser, generate_haystack_prompt
-    from cpmcu.generate import run_generation
-else:
-    # Module execution - use relative import
-    from .utils import create_minicpm4_config, create_minicpm4_test_parser, generate_haystack_prompt
-    from ...cpmcu.generate import run_generation
 
 
 def main():
-    """MiniCPM4 test generation main entry point"""
-    parser = create_minicpm4_test_parser()
-    args = parser.parse_args()
+    """Launch the core generation module with MiniCPM4 parameter processing"""
+    # Add parent directory to sys.path for absolute imports
+    current_dir = Path(__file__).parent
+    sys.path.insert(0, str(current_dir))
     
-    # Use default prompt if none specified
-    if not args.prompt_file and not args.prompt_text:
-        args.prompt_text = "Who are you?"
+    from utils import create_minicpm4_parser, setup_minicpm4_paths
+    
+    # Parse MiniCPM4-specific arguments and get unknown arguments
+    parser = create_minicpm4_parser()
+    args, unknown_args = parser.parse_known_args()
+    
+    # Extract MiniCPM4-specific parameters (map to existing test parser args)
+    apply_quant = getattr(args, 'apply_quant', True)  # Use existing apply-quant
+    apply_eagle = getattr(args, 'apply_eagle', True)  # MiniCPM4 specific
+    apply_eagle_quant = getattr(args, 'apply_eagle_quant', True)  # Map to existing apply-spec-quant  
+    minicpm4_yarn = getattr(args, 'minicpm4_yarn', True)
+    
+    # Generate model paths based on MiniCPM4 parameters
+    model_path, draft_model_path = setup_minicpm4_paths(
+        apply_quant=apply_quant,
+        apply_eagle=apply_eagle,
+        apply_eagle_quant=apply_eagle_quant
+    )
+    
+    # Build command arguments for subprocess
+    cmd_args = [sys.executable, "-m", "cpmcu.generate"]
+    
+    # Add model configuration
+    cmd_args.extend(["--model-path", model_path])
+    if draft_model_path:
+        cmd_args.extend(["--draft-model-path", draft_model_path])
+        cmd_args.extend(["--frspec-path", draft_model_path])
+    
+    # Add model type
+    cmd_args.extend(["--model-type", "minicpm4"])
+    
+    # Add default prompt if none provided in unknown args
+    has_prompt = any(arg in unknown_args for arg in ["--prompt-text", "--prompt-file"])
+    if not has_prompt:
+        cmd_args.extend(["--prompt-text", "Who are you?"])
         print("No prompt specified, using default: 'Who are you?'")
     
-    # Create MiniCPM4 configuration using the args
-    try:
-        config = create_minicpm4_config(
-            args=args,
-            path_prefix=args.path_prefix,
-            minicpm4_yarn=args.minicpm4_yarn
-        )
-    except Exception as e:
-        print(f"Error creating MiniCPM4 configuration: {e}")
-        return 1
-    
-    # Add prompt to configuration
-    if args.prompt_file:
-        config['prompt_file'] = args.prompt_file
-    else:
-        config['prompt_text'] = args.prompt_text
-    
-    print("=" * 60)
-    print("MiniCPM4 Test Generation Configuration:")
-    print("=" * 60)
-    print(f"Model: {config['model_path']}")
-    print(f"Draft Model: {config.get('draft_model_path', 'None')}")
-    print(f"Features: speculative=auto, quant=auto, sparse={config.get('apply_sparse', False)}")
-    print(f"YARN: {config.get('minicpm4_yarn', False)}")
-    print(f"Generation: num_tokens={config.get('num_generate', 256)}, temperature={config.get('temperature', 0.0)}")
-    prompt_text = args.prompt_text or (open(args.prompt_file, 'r').read().strip() if args.prompt_file else "")
-    print(f"Prompt: {prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''}")
-    print("=" * 60)
+    # Pass through all other arguments
+    cmd_args.extend(unknown_args)
     
     try:
-        print("Starting MiniCPM4 generation...")
-        
-        # Apply MiniCPM4-specific configurations before generation
-        if config.get('minicpm4_yarn', False):
-            # Import and apply YARN configuration callback
-            if __package__ is None:
-                from minicpm4.utils import create_minicpm4_yarn_callback
-            else:
-                from .utils import create_minicpm4_yarn_callback
-            config['model_init_callback'] = create_minicpm4_yarn_callback()
-        
-        # Direct function call instead of subprocess
-        generated_text = run_generation(config)
-        return 0
-    except Exception as e:
+        # Run the core generation module with processed arguments
+        process = subprocess.run(cmd_args, check=True)
+        return process.returncode
+    except subprocess.CalledProcessError as e:
         print(f"Generation failed: {e}")
-        return 1
+        return e.returncode
     except KeyboardInterrupt:
         print("\nGeneration interrupted by user")
         return 0
