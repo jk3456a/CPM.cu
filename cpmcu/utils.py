@@ -28,37 +28,8 @@ def load_config_from_file(config_path: str, keep_dtype_as_string: bool = False) 
     
     return config
 
-def get_default_config():
-    """Get default configuration for generic models"""
-    return {
-        "use_stream": True,
-        "apply_speculative": False,
-        "apply_quant": False,
-        "apply_sparse": False,
-        "apply_spec_quant": False,
-        "frspec_vocab_size": 32768,
-        "spec_window_size": 1024,
-        "spec_num_iter": 2,
-        "spec_topk_per_iter": 10,
-        "spec_tree_size": 12,
-        "apply_compress_lse": True,
-        "sink_window_size": 1,
-        "block_window_size": 8,
-        "sparse_topk_k": 64,
-        "sparse_switch": 1,
-        "num_generate": 256,
-        "chunk_length": 2048,
-        "memory_limit": 0.9,
-        "cuda_graph": True,
-        "dtype": torch.float16,
-        "use_terminators": True,
-        "temperature": 0.0,
-        "random_seed": None,
-        "use_enter": False,
-        "use_decode_enter": False,
-        "use_chat_template": True,
-        "model_type": "auto"
-    }
+# Default configuration is now handled directly in argparser
+# No need for separate get_default_config() function
 
 def create_temp_config(config: dict, for_server: bool = False) -> dict:
     """Create a temporary config with proper type conversions for serialization"""
@@ -89,8 +60,15 @@ def create_temp_config(config: dict, for_server: bool = False) -> dict:
     
     return temp_config
 
+def detect_quantization_from_path(model_path):
+    """Auto-detect quantization from model path"""
+    path_lower = model_path.lower()
+    # Check for common quantization keywords in model path
+    quant_keywords = ['marlin', 'gptq', 'quant', 'awq', 'int4', 'int8', 'w4a16', 'qat']
+    return any(keyword in path_lower for keyword in quant_keywords)
+
 def setup_model_paths(config):
-    """Setup and validate model paths"""
+    """Setup and validate model paths with automatic feature detection"""
     model_path = check_or_download_model(config['model_path'])
     
     # Auto-detect model type if not specified
@@ -98,18 +76,41 @@ def setup_model_paths(config):
         config['model_type'] = detect_model_type(model_path)
         print(f"Auto-detected model type: {config['model_type']}")
     
+    # Auto-detect quantization from main model path
+    detected_quant = detect_quantization_from_path(model_path)
+    config['apply_quant'] = detected_quant
+    if detected_quant:
+        print(f"Auto-detected quantization from model path: {model_path}")
+    else:
+        print(f"No quantization detected from model path: {model_path}")
+    
     draft_model_path = None
     if config.get('draft_model_path'):
         draft_model_path = check_or_download_model(config['draft_model_path'])
+        
+        # Enable speculative decoding when draft model is present
         config['apply_speculative'] = True
         print(f"Draft model specified, enabling speculative decoding")
+        
+        # Auto-detect draft model quantization
+        detected_spec_quant = detect_quantization_from_path(draft_model_path)
+        config['apply_spec_quant'] = detected_spec_quant
+        if detected_spec_quant:
+            print(f"Auto-detected quantization for draft model: {draft_model_path}")
+        else:
+            print(f"No quantization detected for draft model: {draft_model_path}")
+    else:
+        # No draft model, disable speculative decoding
+        config['apply_speculative'] = False
+        config['apply_spec_quant'] = False
     
     frspec_path = None
     if config.get('frspec_path'):
-        if os.path.exists(config['frspec_path']):
-            frspec_path = config['frspec_path']
-        else:
+        # Handle frspec_path the same way as model paths - support both local paths and HF URLs
+        frspec_path = check_or_download_model(config['frspec_path'])
+        if not os.path.exists(frspec_path):
             print(f"Warning: FRSpec file not found: {config['frspec_path']}")
+            frspec_path = None
     
     return model_path, draft_model_path, frspec_path
 
@@ -180,6 +181,17 @@ def create_model(model_path, draft_model_path, config):
         'random_seed': config['random_seed'],
     }
     
+    # Auto-detect model features directly from paths
+    base_model_quantized = config.get('apply_quant', detect_quantization_from_path(model_path))
+    has_draft_model = draft_model_path is not None
+    draft_model_quantized = config.get('apply_spec_quant', detect_quantization_from_path(draft_model_path) if has_draft_model else False)
+    
+    print(f"Model creation:")
+    print(f"  Base model quantized: {base_model_quantized}")
+    print(f"  Speculative decoding: {has_draft_model}")
+    print(f"  Draft model quantized: {draft_model_quantized}")
+    
+    print(f"config.get('model_type'): {config.get('model_type')}")
     # Speculative decoding arguments
     spec_kwargs = {
         'num_iter': config.get('spec_num_iter', 2),
@@ -187,31 +199,50 @@ def create_model(model_path, draft_model_path, config):
         'tree_size': config.get('spec_tree_size', 12),
         'eagle_window_size': config.get('spec_window_size', 1024),
         'frspec_vocab_size': config.get('frspec_vocab_size', 32768),
-        'apply_eagle_quant': config.get('apply_spec_quant', False),
+        'apply_eagle_quant': draft_model_quantized,  # Use auto-detected value
         # Model-specific settings
         'use_rope': config.get('model_type') in ['minicpm', 'minicpm4'],
         'use_input_norm': config.get('model_type') in ['minicpm', 'minicpm4'],
         'use_attn_norm': config.get('model_type') in ['minicpm', 'minicpm4']
     }
     
-    # Create model based on configuration
-    if config.get('apply_quant', False):
-        if config.get('apply_speculative', False) and draft_model_path:
+    # Create model based on auto-detection
+    if base_model_quantized:
+        if has_draft_model:
+            print(f"Creating quantized model with Eagle speculative decoding")
             return W4A16GPTQMarlinLLM_with_eagle(draft_model_path, model_path, **common_kwargs, **spec_kwargs)
         else:
+            print(f"Creating quantized model")
             return W4A16GPTQMarlinLLM(model_path, **common_kwargs)
     else:
-        if config.get('apply_speculative', False) and draft_model_path:
+        if has_draft_model:
+            print(f"Creating model with Eagle speculative decoding")
             return LLM_with_eagle(draft_model_path, model_path, **common_kwargs, **spec_kwargs)
         else:
+            print(f"Creating standard model")
             return LLM(model_path, **common_kwargs)
 
-def setup_frspec_vocab(llm, frspec_path):
+def setup_frspec_vocab(llm, frspec_path, frspec_vocab_size=32768):
     """Setup frequency speculative vocabulary for speculative models"""
-    if frspec_path and os.path.exists(frspec_path):
+    if not frspec_path:
+        return False
+        
+    # If frspec_path is a directory (model directory), look for freq_{vocab_size}.pt file
+    if os.path.isdir(frspec_path):
+        freq_file = os.path.join(frspec_path, f"freq_{frspec_vocab_size}.pt")
+        if os.path.exists(freq_file):
+            frspec_path = freq_file
+        else:
+            print(f"Warning: FRSpec file freq_{frspec_vocab_size}.pt not found in directory: {frspec_path}")
+            return False
+    
+    # If frspec_path is a specific file, use it directly
+    if os.path.exists(frspec_path):
         print(f"Loading frequency vocabulary from: {frspec_path}")
         with open(frspec_path, 'rb') as f:
             token_id_remap = torch.tensor(torch.load(f, weights_only=True), dtype=torch.int32, device="cpu")
         llm._load("token_id_remap", token_id_remap, cls="eagle")
         return True
-    return False 
+    else:
+        print(f"Warning: FRSpec file not found: {frspec_path}")
+        return False 

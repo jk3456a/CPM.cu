@@ -80,9 +80,6 @@ def print_generation_statistics(decode_length, input_length=None, prefill_time=N
     if decode_time is not None and decode_time > 0:
         print(f"Decode time: {decode_time:.2f} s")
         print(f"Decode tokens/s: {decode_length / decode_time:.2f}")
-    
-
-
 
 
 def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
@@ -252,7 +249,7 @@ def run_generation(config):
     
     # Load frequency speculative vocabulary if enabled
     if config.get('apply_speculative', False) and frspec_path:
-        if setup_frspec_vocab(llm, frspec_path):
+        if setup_frspec_vocab(llm, frspec_path, config.get('frspec_vocab_size', 32768)):
             print("Loaded frequency speculative vocabulary")
         else:
             print("Warning: Could not load frequency speculative vocabulary")

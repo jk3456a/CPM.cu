@@ -73,7 +73,7 @@ async def lifespan(app: FastAPI):
         # Load frequency speculative vocabulary if enabled
         if config.get('apply_speculative', False) and frspec_path:
             print(f"Loading frequency vocabulary from {frspec_path}")
-            setup_frspec_vocab(model_instance, frspec_path)
+            setup_frspec_vocab(model_instance, frspec_path, config.get('frspec_vocab_size', 32768))
         
         # Load model weights
         model_instance.load_from_hf()
