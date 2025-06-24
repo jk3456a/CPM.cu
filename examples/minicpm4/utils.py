@@ -5,6 +5,80 @@ MiniCPM4 Utilities
 Essential utilities for MiniCPM4 model configuration and path management.
 """
 
+import sys
+import subprocess
+from pathlib import Path
+
+
+def launch_minicpm4_module(module_name):
+    """
+    Universal MiniCPM4 module launcher
+    
+    Args:
+        module_name: Target module name (e.g., "cpmcu.launch_server", "cpmcu.generate")
+    
+    Returns:
+        int: Process return code
+    """
+    # Add current directory to sys.path for imports
+    current_dir = Path(__file__).parent
+    sys.path.insert(0, str(current_dir))
+    
+    # Determine parser type based on module name
+    is_server = "server" in module_name
+    
+    # Parse MiniCPM4-specific arguments and get unknown arguments
+    parser = create_minicpm4_parser(is_server=is_server)
+    # Check if help is requested
+    if '--help' in sys.argv or '-h' in sys.argv:
+        cmd_args = [sys.executable, "-m", module_name, "--help"]
+        subprocess.run(cmd_args)
+        parser.print_help()
+        return 0
+    args, unknown_args = parser.parse_known_args()
+    
+    # Extract MiniCPM4-specific parameters
+    apply_sparse = getattr(args, 'apply_sparse', True)
+    apply_quant = getattr(args, 'apply_quant', True)
+    apply_eagle = getattr(args, 'apply_eagle', True)
+    apply_eagle_quant = getattr(args, 'apply_eagle_quant', True)
+    minicpm4_yarn = getattr(args, 'minicpm4_yarn', True)
+    
+    # Generate model paths based on MiniCPM4 parameters
+    model_path, draft_model_path = setup_minicpm4_paths(
+        apply_quant=apply_quant,
+        apply_eagle=apply_eagle,
+        apply_eagle_quant=apply_eagle_quant
+    )
+    
+    # Build command arguments for subprocess
+    cmd_args = [sys.executable, "-m", module_name]
+    
+    # Add model configuration
+    cmd_args.extend(["--model-path", model_path])
+    if draft_model_path:
+        cmd_args.extend(["--draft-model-path", draft_model_path])
+        cmd_args.extend(["--frspec-path", draft_model_path])
+    
+    # Add model type
+    cmd_args.extend(["--model-type", "minicpm4" if apply_sparse else "minicpm"])
+    
+    # Pass through all other arguments (non-MiniCPM4 specific)
+    cmd_args.extend(unknown_args)
+    
+    try:
+        # Run the target module with processed arguments
+        process = subprocess.run(cmd_args, check=True)
+        return process.returncode
+    except subprocess.CalledProcessError as e:
+        action = "Server failed to start" if "server" in module_name else "Generation failed"
+        print(f"{action}: {e}")
+        return e.returncode
+    except KeyboardInterrupt:
+        action = "Server" if "server" in module_name else "Generation"
+        print(f"\n{action} interrupted by user")
+        return 0
+
 
 def setup_minicpm4_paths(apply_quant=None, apply_eagle=None, apply_eagle_quant=None):
     """Setup MiniCPM4 model paths based on configuration"""
@@ -19,46 +93,35 @@ def setup_minicpm4_paths(apply_quant=None, apply_eagle=None, apply_eagle_quant=N
     return model_path, draft_model_path
 
 
-def create_minicpm4_parser():
-    """Create argument parser with MiniCPM4-specific parameters extended from test parser"""
-    import sys
-    from pathlib import Path
+def create_minicpm4_parser(is_server=False):
+    """Create argument parser with MiniCPM4-specific parameters only"""
+    from cpmcu.args import str2bool
+    import argparse
     
-    # Add parent directory to path for imports
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from cpmcu.args import create_test_parser, str2bool
+    parser = argparse.ArgumentParser(description='MiniCPM4 Configuration')
     
-    # Create base test parser with all standard arguments
-    parser = create_test_parser()
-    parser.description = 'MiniCPM4 Optimized Tool'
+    # Add MiniCPM4-specific arguments
+    group = parser.add_argument_group('MiniCPM4 Test Configuration', 'Parameters for MiniCPM4 test')
     
-    # Override the required model-path argument to make it optional for MiniCPM4
-    # since we can automatically determine paths based on configuration
-    for action in parser._actions:
-        if action.dest == 'model_path' or action.dest == 'draft_model_path' or action.dest == 'frspec_path':
-            action.required = False
-            action.default = None
-            action.help = 'auto-selected based on configuration'
-            break
-    
-    # Add MiniCPM4-specific arguments (reuse existing apply-quant and apply-spec-quant)
-    group = parser.add_argument_group('MiniCPM4 Configuration', 'MiniCPM4-specific parameters')
+    group.add_argument('--apply-sparse', '--apply_sparse', default=True,
+                      type=str2bool, nargs='?', const=True,
+                      help='Enable sparse attention (default: True). Values: true/false, yes/no, 1/0, or just --apply-sparse for True')
     
     group.add_argument('--apply-quant', '--apply_quant', default=True,
                       type=str2bool, nargs='?', const=True,
-                      help='Enable quantization for base model')
+                      help='Enable quantization for base model (default: True). Values: true/false, yes/no, 1/0, or just --apply-quant for True')
     
     group.add_argument('--apply-eagle', '--apply_eagle', default=True,
                       type=str2bool, nargs='?', const=True,
-                      help='Enable Eagle speculative decoding')
+                      help='Enable Eagle speculative decoding (default: True). Values: true/false, yes/no, 1/0, or just --apply-eagle for True')
     
     group.add_argument('--apply-eagle-quant', '--apply_eagle_quant', default=True,
                       type=str2bool, nargs='?', const=True,
-                      help='Enable quantization for Eagle draft model')
+                      help='Enable quantization for Eagle draft model (default: True). Values: true/false, yes/no, 1/0, or just --apply-eagle-quant for True')
     
     group.add_argument('--minicpm4-yarn', '--minicpm4_yarn', default=True,
                       type=str2bool, nargs='?', const=True,
-                      help='Enable MiniCPM4 YARN for long context support')
+                      help='Enable MiniCPM4 YARN for long context support (default: True). Values: true/false, yes/no, 1/0, or just --minicpm4-yarn for True')
     
     return parser
 

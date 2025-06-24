@@ -42,7 +42,7 @@ def add_model_config_args(parser: argparse.ArgumentParser):
     model_group.add_argument('--dtype', type=str, default='float16', choices=['float16', 'bfloat16'],
                             help='Model dtype (default: float16)')
     model_group.add_argument('--chunk-length', '--chunk_length', type=int, default=2048,
-                                 help='Chunk length (default: 2048)')
+                            help='Chunk length (default: 2048)')
 
     # System Features Group
     system_group = parser.add_argument_group('System Features', 'System-level configuration parameters')
@@ -69,20 +69,17 @@ def add_model_config_args(parser: argparse.ArgumentParser):
 
     # Sparse Attention Group
     sparse_group = parser.add_argument_group('Sparse Attention', 'Sparse attention mechanism configuration')
-    sparse_group.add_argument('--apply-sparse', '--apply_sparse', default=False,
-                            type=str2bool, nargs='?', const=True,
-                            help='Use sparse attention (default: False). Values: true/false, yes/no, 1/0, or just --apply-sparse for True')
-    sparse_group.add_argument('--apply-compress-lse', '--apply_compress_lse', default=True,
-                            type=str2bool, nargs='?', const=True,
-                            help='Apply LSE compression (default: True). Values: true/false, yes/no, 1/0, or just --apply-compress-lse for True')
     sparse_group.add_argument('--sink-window-size', '--sink_window_size', type=int, default=1,
                             help='Sink window size (default: 1)')
     sparse_group.add_argument('--block-window-size', '--block_window_size', type=int, default=8,
                             help='Block window size (default: 8)')
     sparse_group.add_argument('--sparse-topk-k', '--sparse_topk_k', type=int, default=64,
                             help='Sparse attention top-k (default: 64)')
-    sparse_group.add_argument('--sparse-switch', '--sparse_switch', type=int, default=1,
-                            help='Sparse switch threshold (default: 1)')
+    sparse_group.add_argument('--sparse-switch', '--sparse_switch', type=int, default=0,
+                            help='Sparse switch threshold (default: 0)')
+    sparse_group.add_argument('--apply-compress-lse', '--apply_compress_lse', default=True,
+                            type=str2bool, nargs='?', const=True,
+                            help='Apply LSE compression (default: True). Values: true/false, yes/no, 1/0, or just --apply-compress-lse for True')
 
     # Generation Parameters Group
     generation_group = parser.add_argument_group('Generation Parameters', 'Text generation configuration parameters')

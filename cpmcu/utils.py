@@ -199,7 +199,7 @@ class ModelFactory:
             'dtype': dtype_value,
             'chunk_length': config['chunk_length'],
             'cuda_graph': config['cuda_graph'],
-            'apply_sparse': config.get('apply_sparse', False),
+            'apply_sparse': config.get('model_type') == 'minicpm4',
             'sink_window_size': config['sink_window_size'],
             'block_window_size': config['block_window_size'],
             'sparse_topk_k': config['sparse_topk_k'],
