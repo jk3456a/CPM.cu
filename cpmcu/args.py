@@ -43,6 +43,9 @@ def add_model_config_args(parser: argparse.ArgumentParser):
                             help='Model dtype (default: float16)')
     model_group.add_argument('--chunk-length', '--chunk_length', type=int, default=2048,
                             help='Chunk length (default: 2048)')
+    model_group.add_argument('--minicpm4-yarn', '--minicpm4_yarn', default=False,
+                            type=str2bool, nargs='?', const=True,
+                            help='[DEPRECATED] Enable MiniCPM4 YARN for long context support (default: False). Values: true/false, yes/no, 1/0, or just --minicpm4-yarn for True')
 
     # System Features Group
     system_group = parser.add_argument_group('System Features', 'System-level configuration parameters')
@@ -91,9 +94,10 @@ def create_server_parser() -> argparse.ArgumentParser:
     """Create server argument parser"""
     parser = argparse.ArgumentParser(description='CPM.cu Server')
     
-    # Server-specific parameters
-    parser.add_argument('--host', type=str, default='0.0.0.0', help='Server host')
-    parser.add_argument('--port', type=int, default=8000, help='Server port')
+    # Server Configuration Group
+    server_group = parser.add_argument_group('Server Configuration', 'Server network configuration parameters')
+    server_group.add_argument('--host', type=str, default='0.0.0.0', help='Server host')
+    server_group.add_argument('--port', type=int, default=8000, help='Server port')
     
     # Add model configuration parameters
     add_model_config_args(parser)
@@ -105,35 +109,33 @@ def create_test_parser() -> argparse.ArgumentParser:
     """Create test script argument parser"""
     parser = argparse.ArgumentParser(description='CPM.cu Test Generation')
     
-    # Test-specific parameters
-    parser.add_argument('--prompt-file', '--prompt_file', type=str, default=None,
+    # Prompt Configuration Group
+    prompt_group = parser.add_argument_group('Prompt Configuration', 'Input prompt configuration parameters')
+    prompt_group.add_argument('--prompt-file', '--prompt_file', type=str, default=None,
                        help='Path to prompt file')
-    parser.add_argument('--prompt-text', '--prompt_text', type=str, default=None,
+    prompt_group.add_argument('--prompt-text', '--prompt_text', type=str, default=None,
                        help='Direct prompt text')
-    
-    # Chat template configuration
-    parser.add_argument('--use-chat-template', '--use_chat_template', default=True,
+    prompt_group.add_argument('--use-chat-template', '--use_chat_template', default=True,
                        type=str2bool, nargs='?', const=True,
                        help='Use chat template for prompt formatting (default: True). Values: true/false, yes/no, 1/0, or just --use-chat-template for True')
     
-    # Add use_stream parameter for test parser
-    parser.add_argument('--use-stream', '--use_stream', default=True,
+    # Generation Configuration Group
+    generation_group = parser.add_argument_group('Generation Configuration', 'Text generation specific parameters')
+    generation_group.add_argument('--use-stream', '--use_stream', default=True,
                        type=str2bool, nargs='?', const=True,
                        help='Use stream generation (default: True). Values: true/false, yes/no, 1/0, or just --use-stream for True')
-    
-    parser.add_argument('--num-generate', '--num_generate', type=int, default=256,
+    generation_group.add_argument('--num-generate', '--num_generate', type=int, default=256,
                        help='Number of tokens to generate (default: 256)')
-    
-    # Test-specific generation parameters
-    parser.add_argument('--use-terminators', '--use_terminators', default=True,
+    generation_group.add_argument('--use-terminators', '--use_terminators', default=True,
                        type=str2bool, nargs='?', const=True,
                        help='Use terminators (default: True). Values: true/false, yes/no, 1/0, or just --use-terminators for True')
     
-    # Interactive Features
-    parser.add_argument('--use-enter', '--use_enter', default=False,
+    # Interactive Features Group
+    interactive_group = parser.add_argument_group('Interactive Features', 'Interactive demo and debugging features')
+    interactive_group.add_argument('--use-enter', '--use_enter', default=False,
                        type=str2bool, nargs='?', const=True,
                        help='Use enter to generate (default: False). Values: true/false, yes/no, 1/0, or just --use-enter for True')
-    parser.add_argument('--use-decode-enter', '--use_decode_enter', default=False,
+    interactive_group.add_argument('--use-decode-enter', '--use_decode_enter', default=False,
                        type=str2bool, nargs='?', const=True,
                        help='Use enter before decode phase (default: False). Values: true/false, yes/no, 1/0, or just --use-decode-enter for True')
     

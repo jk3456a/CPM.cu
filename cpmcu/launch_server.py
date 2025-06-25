@@ -31,7 +31,8 @@ from .api_models import (
 from .utils import (
     setup_model_paths,
     ModelFactory,
-    setup_frspec_vocab
+    setup_frspec_vocab,
+    apply_minicpm4_yarn_config
 )
 from .args import parse_server_args, ConfigurationDisplay
 
@@ -41,11 +42,11 @@ model_config: Dict[str, Any] = {}
 
 
 class ModelInitializer:
-    """统一的模型初始化管理类"""
+    """Unified model initialization manager class"""
     
     @staticmethod
     def initialize_model(config: Dict[str, Any]) -> LLM:
-        """统一的模型初始化流程"""
+        """Unified model initialization process"""
         print(f"Loading model with configuration:")
         
         # Setup model paths
@@ -61,12 +62,12 @@ class ModelInitializer:
         # Initialize model storage
         model_instance.init_storage()
         
-        # Apply model-specific configurations via callback if provided
-        if 'model_init_callback' in config and config['model_init_callback'] is not None:
+        # Apply MiniCPM4 YARN configuration if enabled
+        if config.get('minicpm4_yarn', False):
             try:
-                config['model_init_callback'](model_instance)
+                apply_minicpm4_yarn_config(model_instance)
             except Exception as e:
-                print(f"Warning: Model initialization callback failed: {e}")
+                print(f"Warning: MiniCPM4 YARN configuration failed: {e}")
         
         # Load frequency speculative vocabulary if enabled
         if config.get('apply_speculative', False) and frspec_path:
@@ -123,7 +124,7 @@ app.add_middleware(
 
 
 class MessageProcessor:
-    """统一的消息处理类"""
+    """Unified message processing class"""
     
     @staticmethod
     def format_messages_to_prompt(messages: list, tokenizer) -> str:
@@ -153,7 +154,7 @@ class MessageProcessor:
     
     @staticmethod
     def _simple_format_fallback(messages: list) -> str:
-        """简单格式化回退方案"""
+        """Simple formatting fallback solution"""
         prompt_parts = []
         
         for message in messages:

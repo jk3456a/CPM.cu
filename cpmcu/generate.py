@@ -15,7 +15,8 @@ from transformers import AutoTokenizer
 from .utils import (
     setup_model_paths,
     ModelFactory,
-    setup_frspec_vocab
+    setup_frspec_vocab,
+    apply_minicpm4_yarn_config
 )
 from .args import parse_test_args, ConfigurationDisplay
 
@@ -252,12 +253,12 @@ def run_generation(config):
     print("Initializing model storage...")
     llm.init_storage()
     
-    # Apply model-specific configurations via callback if provided
-    if 'model_init_callback' in config and config['model_init_callback'] is not None:
+    # Apply MiniCPM4 YARN configuration if enabled
+    if config.get('minicpm4_yarn', False):
         try:
-            config['model_init_callback'](llm)
+            apply_minicpm4_yarn_config(llm)
         except Exception as e:
-            print(f"Warning: Model initialization callback failed: {e}")
+            print(f"Warning: MiniCPM4 YARN configuration failed: {e}")
     
     # Load frequency speculative vocabulary if enabled (draft model exists)
     has_speculative = config.get('draft_model_path') is not None
