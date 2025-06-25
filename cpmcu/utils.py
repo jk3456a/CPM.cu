@@ -12,43 +12,6 @@ import torch
 from huggingface_hub import snapshot_download
 
 
-def convert_dtype(dtype_value, for_server=False):
-    """Convert dtype between string and torch.dtype"""
-    if dtype_value is None:
-        return None
-        
-    if isinstance(dtype_value, torch.dtype):
-        if for_server:
-            return 'float16' if dtype_value == torch.float16 else 'bfloat16'
-        else:
-            return dtype_value
-    elif isinstance(dtype_value, str):
-        if for_server:
-            return dtype_value
-        else:
-            return torch.float16 if dtype_value == 'float16' else torch.bfloat16
-    else:
-        dtype_str = str(dtype_value).split('.')[-1]
-        if for_server:
-            return dtype_str
-        else:
-            return torch.float16 if 'float16' in dtype_str else torch.bfloat16
-
-
-def load_config_from_file(config_path: str, for_server: bool = False) -> dict:
-    """Load configuration from JSON file"""
-    if not os.path.exists(config_path):
-        raise FileNotFoundError(f"Config file not found: {config_path}")
-    
-    with open(config_path, 'r', encoding='utf-8') as f:
-        config = json.load(f)
-    
-    if 'dtype' in config:
-        config['dtype'] = convert_dtype(config['dtype'], for_server)
-    
-    return config
-
-
 def detect_quantization_from_path(model_path):
     """Auto-detect quantization from model path"""
     if not model_path:
@@ -94,133 +57,96 @@ def detect_model_type(model_path):
 
 def setup_model_paths(config):
     """Setup and validate model paths with automatic feature detection"""
+    # Setup main model
     model_path = check_or_download_model(config['model_path'])
     
-    # Auto-detect model type if not specified
+    # Auto-detect model type and quantization
     if config.get('model_type', 'auto') == 'auto':
         config['model_type'] = detect_model_type(model_path)
         print(f"Auto-detected model type: {config['model_type']}")
     
-    # Auto-detect quantization from main model path
-    detected_quant = detect_quantization_from_path(model_path)
-    config['apply_quant'] = detected_quant
-    if detected_quant:
-        print(f"Auto-detected quantization from model path: {model_path}")
-    else:
-        print(f"No quantization detected from model path: {model_path}")
-    
+    # Setup draft model for speculative decoding
     draft_model_path = None
     if config.get('draft_model_path'):
         draft_model_path = check_or_download_model(config['draft_model_path'])
         print(f"Draft model specified, enabling speculative decoding")
-        
-        # Auto-detect draft model quantization
-        detected_spec_quant = detect_quantization_from_path(draft_model_path)
-        if detected_spec_quant:
-            print(f"Auto-detected quantization for draft model: {draft_model_path}")
-        else:
-            print(f"No quantization detected for draft model: {draft_model_path}")
     
+    # Setup FRSpec path
     frspec_path = None
     if config.get('frspec_path'):
         frspec_path = check_or_download_model(config['frspec_path'])
-        original_frspec_vocab_size = config.get('frspec_vocab_size', 32768)
+        vocab_size = config.get('frspec_vocab_size', 0)
         
         if os.path.exists(frspec_path) and os.path.isdir(frspec_path):
-            freq_file = os.path.join(frspec_path, f"freq_{original_frspec_vocab_size}.pt")
+            freq_file = os.path.join(frspec_path, f"freq_{vocab_size}.pt")
             if os.path.exists(freq_file):
                 frspec_path = freq_file
                 print(f"Found FRSpec file: {freq_file}")
             else:
-                frspec_path = None
-                config['frspec_vocab_size'] = 0
-                print(f"Warning: FRSpec file freq_{original_frspec_vocab_size}.pt not found in directory: {frspec_path}")
+                frspec_path, config['frspec_vocab_size'] = None, 0
+                print(f"Warning: FRSpec file freq_{vocab_size}.pt not found in directory: {frspec_path}")
     else:
         config['frspec_vocab_size'] = 0
     
     return model_path, draft_model_path, frspec_path
 
 
-class ModelFactory:
-    """Simplified model factory class"""
+def create_model(model_path, draft_model_path, config):
+    """Create model instance based on configuration"""
+    from .llm import LLM
+    from .llm_w4a16_gptq_marlin import W4A16GPTQMarlinLLM
+    from .speculative import LLM_with_eagle
+    from .speculative.eagle_base_quant.eagle_base_w4a16_marlin_gptq import W4A16GPTQMarlinLLM_with_eagle
     
-    @staticmethod
-    def create_model(model_path, draft_model_path, config):
-        """Create model instance based on configuration"""
-        from .llm import LLM
-        from .llm_w4a16_gptq_marlin import W4A16GPTQMarlinLLM
-        from .speculative import LLM_with_eagle
-        from .speculative.eagle_base_quant.eagle_base_w4a16_marlin_gptq import W4A16GPTQMarlinLLM_with_eagle
-        
-        # Handle dtype conversion
-        dtype_value = convert_dtype(config['dtype'], for_server=False)
-        
-        # Build common arguments
-        common_kwargs = {
-            'dtype': dtype_value,
-            'chunk_length': config['chunk_length'],
-            'cuda_graph': config['cuda_graph'],
-            'apply_sparse': config.get('model_type') == 'minicpm4',
-            'sink_window_size': config['sink_window_size'],
-            'block_window_size': config['block_window_size'],
-            'sparse_topk_k': config['sparse_topk_k'],
-            'sparse_switch': config['sparse_switch'],
-            'use_compress_lse': config['use_compress_lse'],
-            'memory_limit': config['memory_limit'],
-            'use_enter': config.get('use_enter', False),
-            'use_decode_enter': config.get('use_decode_enter', False),
-            'temperature': config.get('temperature', 0.0),
-            'random_seed': config.get('random_seed', None),
-        }
-        
-        # Auto-detect model features
-        base_model_quantized = config.get('apply_quant', detect_quantization_from_path(model_path))
-        has_draft_model = draft_model_path is not None
-        draft_model_quantized = detect_quantization_from_path(draft_model_path) if has_draft_model else False
-        
-        print(f"Model creation:")
-        print(f"  Base model quantized: {base_model_quantized}")
-        print(f"  Speculative decoding: {has_draft_model}")
-        print(f"  Draft model quantized: {draft_model_quantized}")
-        print(f"  Model type: {config.get('model_type')}")
-        
-        # Create model based on configuration
-        if base_model_quantized:
-            if has_draft_model:
-                print(f"Creating quantized model with Eagle speculative decoding")
-                spec_kwargs = {
-                    'num_iter': config.get('spec_num_iter', 2),
-                    'topk_per_iter': config.get('spec_topk_per_iter', 10),
-                    'tree_size': config.get('spec_tree_size', 12),
-                    'eagle_window_size': config.get('spec_window_size', 1024),
-                    'frspec_vocab_size': config.get('frspec_vocab_size', 32768),
-                    'apply_eagle_quant': draft_model_quantized,
-                    'use_rope': config.get('model_type') in ['minicpm', 'minicpm4'],
-                    'use_input_norm': config.get('model_type') in ['minicpm', 'minicpm4'],
-                    'use_attn_norm': config.get('model_type') in ['minicpm', 'minicpm4']
-                }
-                return W4A16GPTQMarlinLLM_with_eagle(draft_model_path, model_path, **common_kwargs, **spec_kwargs)
-            else:
-                print(f"Creating quantized model")
-                return W4A16GPTQMarlinLLM(model_path, **common_kwargs)
+    # Auto-detect model features
+    base_model_quantized = detect_quantization_from_path(model_path)
+    has_draft_model = draft_model_path is not None
+    draft_model_quantized = detect_quantization_from_path(draft_model_path) if has_draft_model else False
+    
+    # Build common arguments
+    common_kwargs = {
+        'dtype': torch.float16 if config['dtype'] == 'float16' else torch.bfloat16,
+        'chunk_length': config['chunk_length'],
+        'cuda_graph': config['cuda_graph'],
+        'apply_sparse': config.get('model_type') == 'minicpm4',
+        'sink_window_size': config['sink_window_size'],
+        'block_window_size': config['block_window_size'],
+        'sparse_topk_k': config['sparse_topk_k'],
+        'sparse_switch': config['sparse_switch'],
+        'use_compress_lse': config['use_compress_lse'],
+        'memory_limit': config['memory_limit'],
+        'use_enter': config.get('use_enter', False),
+        'use_decode_enter': config.get('use_decode_enter', False),
+        'temperature': config.get('temperature', 0.0),
+        'random_seed': config.get('random_seed', None),
+    }
+    spec_kwargs = {
+        'num_iter': config.get('spec_num_iter', 2),
+        'topk_per_iter': config.get('spec_topk_per_iter', 10),
+        'tree_size': config.get('spec_tree_size', 12),
+        'eagle_window_size': config.get('spec_window_size', 1024),
+        'frspec_vocab_size': config.get('frspec_vocab_size', 0),
+        'apply_eagle_quant': draft_model_quantized,
+        'use_rope': config.get('model_type') in ['minicpm', 'minicpm4'],
+        'use_input_norm': config.get('model_type') in ['minicpm', 'minicpm4'],
+        'use_attn_norm': config.get('model_type') in ['minicpm', 'minicpm4']
+    }
+    
+    # Create model based on configuration
+    if base_model_quantized:
+        if has_draft_model:
+            print(f"Creating quantized model with Eagle speculative decoding")
+            return W4A16GPTQMarlinLLM_with_eagle(draft_model_path, model_path, **common_kwargs, **spec_kwargs)
         else:
-            if has_draft_model:
-                print(f"Creating model with Eagle speculative decoding")
-                spec_kwargs = {
-                    'num_iter': config.get('spec_num_iter', 2),
-                    'topk_per_iter': config.get('spec_topk_per_iter', 10),
-                    'tree_size': config.get('spec_tree_size', 12),
-                    'eagle_window_size': config.get('spec_window_size', 1024),
-                    'frspec_vocab_size': config.get('frspec_vocab_size', 32768),
-                    'apply_eagle_quant': draft_model_quantized,
-                    'use_rope': config.get('model_type') in ['minicpm', 'minicpm4'],
-                    'use_input_norm': config.get('model_type') in ['minicpm', 'minicpm4'],
-                    'use_attn_norm': config.get('model_type') in ['minicpm', 'minicpm4']
-                }
-                return LLM_with_eagle(draft_model_path, model_path, **common_kwargs, **spec_kwargs)
-            else:
-                print(f"Creating standard model")
-                return LLM(model_path, **common_kwargs)
+            print(f"Creating quantized model")
+            return W4A16GPTQMarlinLLM(model_path, **common_kwargs)
+    else:
+        if has_draft_model:
+            print(f"Creating model with Eagle speculative decoding")
+            return LLM_with_eagle(draft_model_path, model_path, **common_kwargs, **spec_kwargs)
+        else:
+            print(f"Creating standard model")
+            return LLM(model_path, **common_kwargs)
 
 
 def setup_frspec_vocab(llm, frspec_path, frspec_vocab_size):

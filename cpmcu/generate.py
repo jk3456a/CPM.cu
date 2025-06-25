@@ -13,7 +13,7 @@ from transformers import AutoTokenizer
 
 from .utils import (
     setup_model_paths,
-    ModelFactory,
+    create_model,
     setup_frspec_vocab,
     apply_minicpm4_yarn_config
 )
@@ -177,25 +177,18 @@ def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
         raise RuntimeError(f"Error during non-streaming generation: {e}")
 
 
-def run_generation(config):
+def run_generation(args):
     """Core generation function that can be called by various frontends"""
     # Display configuration summary at the start
-    display_config_summary(config, "Generation Configuration")
-    
-    # Create a dummy args object for compatibility with make_input
-    class Args:
-        def __init__(self, config):
-            self.prompt_file = config.get('prompt_file')
-            self.prompt_text = config.get('prompt_text')
-            self.use_chat_template = config.get('use_chat_template', True)
-    
-    args = Args(config)
+    display_config_summary(args, "Generation Configuration")
     
     # Validate required parameters
-    if not config.get('model_path'):
+    if not getattr(args, 'model_path', None):
         raise ValueError("model_path is required")
     
-    # Setup model paths
+    # Setup model paths - convert args to dict for compatibility with existing functions
+    config = vars(args)
+    
     try:
         model_path, draft_model_path, frspec_path = setup_model_paths(config)
     except Exception as e:
@@ -210,7 +203,7 @@ def run_generation(config):
     
     # Create model
     try:
-        llm = ModelFactory.create_model(model_path, draft_model_path, config)
+        llm = create_model(model_path, draft_model_path, config)
         print(f"Created model: {type(llm).__name__}")
     except Exception as e:
         raise RuntimeError(f"Error creating model: {e}")
@@ -224,7 +217,7 @@ def run_generation(config):
     
     # Setup terminators
     terminators = []
-    if not config.get('ignore_eos', False):
+    if not getattr(args, 'ignore_eos', False):
         terminators.append(tokenizer.eos_token_id)
     
     # Initialize model storage
@@ -232,16 +225,16 @@ def run_generation(config):
     llm.init_storage()
     
     # Apply MiniCPM4 YARN configuration if enabled
-    if config.get('minicpm4_yarn', False):
+    if getattr(args, 'minicpm4_yarn', False):
         try:
             apply_minicpm4_yarn_config(llm)
         except Exception as e:
             print(f"Warning: MiniCPM4 YARN configuration failed: {e}")
     
     # Load frequency speculative vocabulary if enabled (draft model exists)
-    has_speculative = config.get('draft_model_path') is not None
-    if has_speculative and (frspec_path is not None) and (config.get('frspec_vocab_size', 0) > 0):
-        frspec_result = setup_frspec_vocab(llm, frspec_path, config.get('frspec_vocab_size', 0))
+    has_speculative = getattr(args, 'draft_model_path', None) is not None
+    if has_speculative and (frspec_path is not None) and (getattr(args, 'frspec_vocab_size', 0) > 0):
+        frspec_result = setup_frspec_vocab(llm, frspec_path, getattr(args, 'frspec_vocab_size', 0))
         if frspec_result is True:
             print("Loaded frequency speculative vocabulary")
         else:
@@ -252,9 +245,9 @@ def run_generation(config):
     llm.load_from_hf()
     print("Model loading completed!")
     
-    # Run generation
+    # Run generation - use config dict for compatibility with existing functions
     try:
-        if config.get('use_stream', True):
+        if getattr(args, 'use_stream', True):
             generated_text = run_stream_generation(llm, input_ids, config, terminators, tokenizer)
         else:
             generated_text = run_non_stream_generation(llm, input_ids, config, terminators, tokenizer)
@@ -268,11 +261,11 @@ def run_generation(config):
 def main():
     """Main entry point for generation module"""
     # Parse arguments using unified parser
-    args, config = parse_test_args()
+    args = parse_test_args()
     
     try:
         # Run generation (config summary will be displayed inside)
-        generated_text = run_generation(config)
+        generated_text = run_generation(args)
         return 0
     except Exception as e:
         print(f"Generation failed: {e}")

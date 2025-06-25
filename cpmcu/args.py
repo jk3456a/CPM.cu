@@ -136,118 +136,84 @@ def create_test_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def args_to_config(args, is_server: bool = False) -> Dict[str, Any]:
-    """Convert parsed arguments to configuration dictionary"""
-    config = {}
-    
-    for key, value in vars(args).items():
-        if key == 'dtype':
-            # Handle dtype conversion
-            if is_server:
-                config[key] = value  # Server keeps string format
-            else:
-                config[key] = torch.float16 if value == 'float16' else torch.bfloat16
-        else:
-            config[key] = value
-    
-    return config
-
-
-def parse_server_args() -> Tuple[argparse.Namespace, Dict[str, Any]]:
+def parse_server_args() -> argparse.Namespace:
     """Parse server arguments"""
     parser = create_server_parser()
     args = parser.parse_args()
-    config = args_to_config(args, is_server=True)
-    return args, config
+    return args
 
 
-def parse_test_args() -> Tuple[argparse.Namespace, Dict[str, Any]]:
+def parse_test_args() -> argparse.Namespace:
     """Parse test arguments"""
     parser = create_test_parser()
     args = parser.parse_args()
-    config = args_to_config(args, is_server=False)
-    return args, config
+    return args
 
 
-def display_config_summary(config: Dict[str, Any], title: str = "Configuration Parameters"):
+def display_config_summary(args: argparse.Namespace, title: str = "Configuration Parameters"):
     """Display configuration parameter summary"""
     print("=" * 50)
     print(f"{title}:")
     print("=" * 50)
     
     # Model information
-    print(f"Model: {config.get('model_path', 'N/A')}")
-    if config.get('draft_model_path'):
-        print(f"Draft Model: {config['draft_model_path']}")
-    if config.get('frspec_path'):
-        print(f"FRSpec: {config['frspec_path']}")
+    print(f"Model: {getattr(args, 'model_path', 'N/A')}")
+    if hasattr(args, 'draft_model_path') and args.draft_model_path:
+        print(f"Draft Model: {args.draft_model_path}")
+    if hasattr(args, 'frspec_path') and args.frspec_path:
+        print(f"FRSpec: {args.frspec_path}")
     
     # Generation parameters
-    generation_parts = [f"chunk_length={config['chunk_length']}"]
-    if 'ignore_eos' in config:
-        generation_parts.append(f"ignore_eos={config['ignore_eos']}")
-    if 'num_generate' in config:
-        generation_parts.insert(0, f"num_generate={config['num_generate']}")
-    if 'use_stream' in config:
-        generation_parts.append(f"use_stream={config['use_stream']}")
+    generation_parts = [f"chunk_length={args.chunk_length}"]
+    if hasattr(args, 'ignore_eos'):
+        generation_parts.append(f"ignore_eos={args.ignore_eos}")
+    if hasattr(args, 'num_generate'):
+        generation_parts.insert(0, f"num_generate={args.num_generate}")
+    if hasattr(args, 'use_stream'):
+        generation_parts.append(f"use_stream={args.use_stream}")
     print(f"Generation: {', '.join(generation_parts)}")
     
     # Sampling parameters (only for test generation)
-    if 'temperature' in config or 'random_seed' in config:
+    if hasattr(args, 'temperature') or hasattr(args, 'random_seed'):
         sampling_parts = []
-        if 'temperature' in config:
-            sampling_parts.append(f"temperature={config['temperature']}")
-        if 'random_seed' in config:
-            sampling_parts.append(f"random_seed={config['random_seed']}")
+        if hasattr(args, 'temperature'):
+            sampling_parts.append(f"temperature={args.temperature}")
+        if hasattr(args, 'random_seed') and args.random_seed is not None:
+            sampling_parts.append(f"random_seed={args.random_seed}")
         if sampling_parts:
             print(f"Sampling: {', '.join(sampling_parts)}")
     
     # Demo parameters
     demo_parts = []
-    if 'use_enter' in config:
-        demo_parts.append(f"use_enter={config['use_enter']}")
-    if 'use_decode_enter' in config:
-        demo_parts.append(f"use_decode_enter={config['use_decode_enter']}")
+    if hasattr(args, 'use_enter'):
+        demo_parts.append(f"use_enter={args.use_enter}")
+    if hasattr(args, 'use_decode_enter'):
+        demo_parts.append(f"use_decode_enter={args.use_decode_enter}")
     if demo_parts:
         print(f"Demo: {', '.join(demo_parts)}")
     
     # System parameters
-    print(f"Others: dtype={config['dtype']}, cuda_graph={config['cuda_graph']}, memory_limit={config['memory_limit']}")
+    print(f"Others: dtype={args.dtype}, cuda_graph={args.cuda_graph}, memory_limit={args.memory_limit}")
     
     # Sparse attention parameters (if enabled)
-    if config.get('model_type') == 'minicpm4':
+    if getattr(args, 'model_type', None) == 'minicpm4':
         sparse_parts = [
-            f"sink_window={config['sink_window_size']}",
-            f"block_window={config['block_window_size']}",
-            f"sparse_topk_k={config['sparse_topk_k']}",
-            f"sparse_switch={config['sparse_switch']}",
-            f"compress_lse={config['use_compress_lse']}"
+            f"sink_window={args.sink_window_size}",
+            f"block_window={args.block_window_size}",
+            f"sparse_topk_k={args.sparse_topk_k}",
+            f"sparse_switch={args.sparse_switch}",
+            f"compress_lse={args.use_compress_lse}"
         ]
         print(f"Sparse Attention: {', '.join(sparse_parts)}")
     
     # Speculative decoding parameters
     spec_parts = [
-        f"num_iter={config.get('spec_num_iter', 2)}",
-        f"topk_per_iter={config.get('spec_topk_per_iter', 10)}",
-        f"tree_size={config.get('spec_tree_size', 12)}",
-        f"frspec_vocab_size={config.get('frspec_vocab_size', 32768)}"
+        f"num_iter={getattr(args, 'spec_num_iter', 2)}",
+        f"topk_per_iter={getattr(args, 'spec_topk_per_iter', 10)}",
+        f"tree_size={getattr(args, 'spec_tree_size', 12)}",
+        f"frspec_vocab_size={getattr(args, 'frspec_vocab_size', 0)}"
     ]
     print(f"Speculative: {', '.join(spec_parts)}")
     
     print("=" * 50)
-    print()
-
-
-# Backward compatibility
-class ConfigurationProcessor:
-    @staticmethod
-    def args_to_config(args, is_server: bool = False) -> Dict[str, Any]:
-        """Deprecated: Use args_to_config function instead"""
-        return args_to_config(args, is_server)
-
-
-class ConfigurationDisplay:
-    @staticmethod
-    def display_config_summary(config: Dict[str, Any], title: str = "Configuration Parameters"):
-        """Deprecated: Use display_config_summary function instead"""
-        return display_config_summary(config, title) 
+    print() 

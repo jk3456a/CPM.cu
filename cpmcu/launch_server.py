@@ -30,7 +30,7 @@ from .api_models import (
 )
 from .utils import (
     setup_model_paths,
-    ModelFactory,
+    create_model,
     setup_frspec_vocab,
     apply_minicpm4_yarn_config
 )
@@ -53,7 +53,7 @@ def initialize_model(config: Dict[str, Any]) -> LLM:
         print(f"Draft model path: {draft_model_path}")
     
     # Create model instance
-    model_instance = ModelFactory.create_model(model_path, draft_model_path, config)
+    model_instance = create_model(model_path, draft_model_path, config)
     
     # Initialize model storage
     model_instance.init_storage()
@@ -445,22 +445,22 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-def launch_server(config: Dict[str, Any]):
+def launch_server(args: argparse.Namespace):
     """Launch server with given configuration"""
     
     # Display configuration summary
-    display_config_summary(config, "Server Configuration")
+    display_config_summary(args, "Server Configuration")
     
-    # Set global model config
+    # Set global model config - convert args to dict for compatibility
     global model_config
-    model_config = {"config": config}
+    model_config = {"config": vars(args)}
     
-    print(f"Starting CPM.cu OpenAI API Server on {config.get('host', '0.0.0.0')}:{config.get('port', 8000)}")
+    print(f"Starting CPM.cu OpenAI API Server on {getattr(args, 'host', '0.0.0.0')}:{getattr(args, 'port', 8000)}")
     
     uvicorn.run(
         app,
-        host=config.get('host', '0.0.0.0'),
-        port=config.get('port', 8000),
+        host=getattr(args, 'host', '0.0.0.0'),
+        port=getattr(args, 'port', 8000),
         log_level="info"
     )
 
@@ -470,10 +470,10 @@ def main():
     from .args import parse_server_args
     
     # Use unified argument parsing
-    args, config = parse_server_args()
+    args = parse_server_args()
     
     # Launch server
-    launch_server(config)
+    launch_server(args)
 
 
 if __name__ == "__main__":
