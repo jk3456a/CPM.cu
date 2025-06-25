@@ -68,21 +68,21 @@ Please follow [MiniCPM4's README](https://github.com/openbmb/minicpm) to downloa
 We provide a simple example to show how to use CPM.cu to generate text.
 
 ```bash
-cd tests/
-python3 test_generate.py --prompt-file <your prompt file>
+cd examples
+python3 minicpm4/test_generate.py --prompt-file <your prompt file>
 ```
 
 If you don't ​​specify​​ the model path, the scripts will load the model from ​​OpenBMB's Hugging Face repository​​.
 If you want to use local paths, we recommend keeping all model filenames unchanged and placing them in the same directory. This way, you can run the model by specifying the directory with the -p parameter. Otherwise, we suggest modifying the paths in the code accordingly.
 You can use --help to learn more ​​about the script's features​​.
 
-We also provide a script, `tests/long_prompt_gen.py`, to generate ​​long code summarization.
+We also provide a script, `examples/long_prompt_gen.py`, to generate ​​long code summarization.
 This script ​​automatically collects code from this repository​​ and prompts ​​the model to "Summarize the code."​
 
 ```bash
-cd tests/
+cd examples
 python3 long_prompt_gen.py # generate prompt.txt (for more details, use --help)
-python3 test_generate.py --prompt-file prompt.txt
+python3 minicpm4/test_generate.py --prompt-file ../prompt.txt
 ```
 
 The output should be of the following format:
@@ -112,19 +112,19 @@ Where:
 
 <div id="openai-api"></div>
 
-## OpenAI API Server
+## OpenAI API Server (experimental)
 
-Start the OpenAI-compatible API server (same args as `tests/test_generate.py`):
+Start the OpenAI-compatible API server (same args as `examples/minicpm4/test_generate.py`):
 
 ```bash
-cd tests/
-python start_server.py [options]
+cd examples
+python minicpm4/start_server.py [options]
 ```
 
 Test the API (supports streaming and non-streaming modes):
 
 ```bash
-cd tests/
+cd examples
 python test_openai_api.py [--no-stream]
 ```
 
