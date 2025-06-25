@@ -28,7 +28,7 @@ def add_model_config_args(parser: argparse.ArgumentParser):
     
     # Model Configuration
     model_group = parser.add_argument_group('Model Configuration')
-    model_group.add_argument('--model-path', '--model_path', '-model', type=str, required=True,
+    model_group.add_argument('--model-path', '--model_path', '--model', type=str, required=True,
                            help='Path to the main model (local path or HuggingFace repo)')
     model_group.add_argument('--draft-model-path', '--draft_model_path', type=str, default=None,
                            help='Path to draft model for speculative decoding')
@@ -127,10 +127,10 @@ def create_test_parser() -> argparse.ArgumentParser:
     interactive_group = parser.add_argument_group('Interactive Features')
     interactive_group.add_argument('--use-enter', '--use_enter', default=False,
                        type=str2bool, nargs='?', const=True,
-                       help='Use enter to generate (default: False)')
+                       help='[DEPRECATED] Use enter to generate (default: False)')
     interactive_group.add_argument('--use-decode-enter', '--use_decode_enter', default=False,
                        type=str2bool, nargs='?', const=True,
-                       help='Use enter before decode phase (default: False)')
+                       help='[DEPRECATED] Use enter before decode phase (default: False)')
     
     add_model_config_args(parser)
     return parser
@@ -213,7 +213,8 @@ def display_config_summary(args: argparse.Namespace, title: str = "Configuration
         print(f"  • Number of Iterations: {getattr(args, 'spec_num_iter', 2)}")
         print(f"  • Top-K per Iteration: {getattr(args, 'spec_topk_per_iter', 10)}")
         print(f"  • Tree Size: {getattr(args, 'spec_tree_size', 12)}")
-        print(f"  • FRSpec Vocab Size: {getattr(args, 'frspec_vocab_size', 32768)}")
+        if hasattr(args, 'frspec_path') and getattr(args, 'frspec_path'):
+            print(f"  • FRSpec Vocab Size: {getattr(args, 'frspec_vocab_size', 32768)}")
         print()
     
     # Sparse Attention Group (for MiniCPM4)

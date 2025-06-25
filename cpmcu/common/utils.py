@@ -93,10 +93,10 @@ def setup_model_paths(config):
 
 def create_model(model_path, draft_model_path, config):
     """Create model instance based on configuration"""
-    from .llm import LLM
-    from .llm_w4a16_gptq_marlin import W4A16GPTQMarlinLLM
-    from .speculative import LLM_with_eagle
-    from .speculative.eagle_base_quant.eagle_base_w4a16_marlin_gptq import W4A16GPTQMarlinLLM_with_eagle
+    from ..llm import LLM
+    from ..llm_w4a16_gptq_marlin import W4A16GPTQMarlinLLM
+    from ..speculative import LLM_with_eagle
+    from ..speculative.eagle_base_quant.eagle_base_w4a16_marlin_gptq import W4A16GPTQMarlinLLM_with_eagle
     
     # Auto-detect model features
     base_model_quantized = detect_quantization_from_path(model_path)

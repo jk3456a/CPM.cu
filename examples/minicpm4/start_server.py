@@ -4,7 +4,7 @@
 import sys
 import subprocess
 import argparse
-from cpmcu.args import str2bool
+from cpmcu.common.args import str2bool
 
 
 def main():
@@ -25,7 +25,7 @@ def main():
     
     # Handle help requests
     if '--help' in sys.argv or '-h' in sys.argv:
-        subprocess.run([sys.executable, "-m", "cpmcu.launch_server", "--help"])
+        subprocess.run([sys.executable, "-m", "cpmcu.server", "--help"])
         parser.print_help()
         return 0
         
@@ -37,7 +37,7 @@ def main():
     frspec_path = "openbmb/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu"
     
     # Build command
-    cmd_args = [sys.executable, "-m", "cpmcu.launch_server",
+    cmd_args = [sys.executable, "-m", "cpmcu.server",
                "--model-path", model_path,
                "--model-type", "minicpm4" if args.apply_sparse else "minicpm"]
     

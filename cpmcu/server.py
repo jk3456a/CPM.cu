@@ -18,7 +18,7 @@ from .llm import LLM
 from .llm_w4a16_gptq_marlin import W4A16GPTQMarlinLLM
 from .speculative import LLM_with_eagle
 from .speculative.eagle_base_quant.eagle_base_w4a16_marlin_gptq import W4A16GPTQMarlinLLM_with_eagle
-from .api_models import (
+from .common.api_models import (
     ChatCompletionRequest, 
     ChatCompletionResponse, 
     ChatCompletionResponseChoice,
@@ -28,13 +28,13 @@ from .api_models import (
     ErrorResponse,
     HealthResponse
 )
-from .utils import (
+from .common.utils import (
     setup_model_paths,
     create_model,
     setup_frspec_vocab,
     apply_minicpm4_yarn_config
 )
-from .args import parse_server_args, display_config_summary
+from .common.args import parse_server_args, display_config_summary
 
 # Global model instance
 model_instance: Optional[LLM] = None
@@ -445,7 +445,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-def launch_server(args: argparse.Namespace):
+def server(args: argparse.Namespace):
     """Launch server with given configuration"""
     
     # Display configuration summary
@@ -467,13 +467,13 @@ def launch_server(args: argparse.Namespace):
 
 def main():
     """Server entry point using unified argument processing"""
-    from .args import parse_server_args
+    from .common.args import parse_server_args
     
     # Use unified argument parsing
     args = parse_server_args()
     
     # Launch server
-    launch_server(args)
+    server(args)
 
 
 if __name__ == "__main__":

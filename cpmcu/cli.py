@@ -11,13 +11,13 @@ import sys
 import torch
 from transformers import AutoTokenizer
 
-from .utils import (
+from .common.utils import (
     setup_model_paths,
     create_model,
     setup_frspec_vocab,
     apply_minicpm4_yarn_config
 )
-from .args import parse_test_args, display_config_summary
+from .common.args import parse_test_args, display_config_summary
 
 
 def print_generation_stats(stats, has_speculative=False):
