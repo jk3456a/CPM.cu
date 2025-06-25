@@ -28,7 +28,7 @@ def add_model_config_args(parser: argparse.ArgumentParser):
     
     # Model Configuration
     model_group = parser.add_argument_group('Model Configuration')
-    model_group.add_argument('--model-path', '--model_path', '-m', type=str, required=True,
+    model_group.add_argument('--model-path', '--model_path', '-model', type=str, required=True,
                            help='Path to the main model (local path or HuggingFace repo)')
     model_group.add_argument('--draft-model-path', '--draft_model_path', type=str, default=None,
                            help='Path to draft model for speculative decoding')
@@ -40,7 +40,7 @@ def add_model_config_args(parser: argparse.ArgumentParser):
     model_group.add_argument('--dtype', type=str, default='float16', choices=['float16', 'bfloat16'],
                             help='Model dtype (default: float16)')
     model_group.add_argument('--chunk-length', '--chunk_length', type=int, default=2048,
-                            help='Chunk length (default: 2048)')
+                            help='Chunked prefill size (default: 2048)')
     model_group.add_argument('--minicpm4-yarn', '--minicpm4_yarn', default=False,
                             type=str2bool, nargs='?', const=True,
                             help='Enable MiniCPM4 YARN for long context support (default: False)')
@@ -56,7 +56,7 @@ def add_model_config_args(parser: argparse.ArgumentParser):
     # Speculative Decoding
     spec_group = parser.add_argument_group('Speculative Decoding')
     spec_group.add_argument('--spec-window-size', '--spec_window_size', type=int, default=1024,
-                           help='Speculative decoding window size (default: 1024)')
+                           help='Speculative decoding slidingwindow size (default: 1024)')
     spec_group.add_argument('--spec-num-iter', '--spec_num_iter', type=int, default=2,
                            help='Speculative decoding number of iterations (default: 2)')
     spec_group.add_argument('--spec-topk-per-iter', '--spec_topk_per_iter', type=int, default=10,
@@ -76,9 +76,9 @@ def add_model_config_args(parser: argparse.ArgumentParser):
                             help='Sparse attention top-k (default: 64)')
     sparse_group.add_argument('--sparse-switch', '--sparse_switch', type=int, default=0,
                             help='Sparse switch threshold (default: 0)')
-    sparse_group.add_argument('--apply-compress-lse', '--apply_compress_lse', default=True,
+    sparse_group.add_argument('--use-compress-lse', '--use_compress_lse', default=True,
                             type=str2bool, nargs='?', const=True,
-                            help='Apply LSE compression (default: True)')
+                            help='Use LSE compression (default: True)')
 
 
 def create_server_parser() -> argparse.ArgumentParser:
@@ -113,15 +113,15 @@ def create_test_parser() -> argparse.ArgumentParser:
     generation_group.add_argument('--use-stream', '--use_stream', default=True,
                        type=str2bool, nargs='?', const=True,
                        help='Use stream generation (default: True)')
-    generation_group.add_argument('--num-generate', '--num_generate', type=int, default=256,
-                       help='Number of tokens to generate (default: 256)')
+    generation_group.add_argument('--num-generate', '--num_generate', type=int, default=1024,
+                       help='Number of tokens to generate (default: 1024)')
     generation_group.add_argument('--temperature', '--temp', type=float, default=0.0,
                              help='Temperature (default: 0.0)')
     generation_group.add_argument('--random-seed', '--random_seed', type=int, default=None,
                             help='Random seed')
-    generation_group.add_argument('--use-terminators', '--use_terminators', default=True,
+    generation_group.add_argument('--ignore-eos', '--ignore_eos', default=False,
                        type=str2bool, nargs='?', const=True,
-                       help='Use terminators (default: True)')
+                       help='Ignore EOS tokens during generation (default: False)')
     
     # Interactive Features
     interactive_group = parser.add_argument_group('Interactive Features')
@@ -184,8 +184,8 @@ def display_config_summary(config: Dict[str, Any], title: str = "Configuration P
     
     # Generation parameters
     generation_parts = [f"chunk_length={config['chunk_length']}"]
-    if 'use_terminators' in config:
-        generation_parts.append(f"use_terminators={config['use_terminators']}")
+    if 'ignore_eos' in config:
+        generation_parts.append(f"ignore_eos={config['ignore_eos']}")
     if 'num_generate' in config:
         generation_parts.insert(0, f"num_generate={config['num_generate']}")
     if 'use_stream' in config:
@@ -221,7 +221,7 @@ def display_config_summary(config: Dict[str, Any], title: str = "Configuration P
             f"block_window={config['block_window_size']}",
             f"sparse_topk_k={config['sparse_topk_k']}",
             f"sparse_switch={config['sparse_switch']}",
-            f"compress_lse={config['apply_compress_lse']}"
+            f"compress_lse={config['use_compress_lse']}"
         ]
         print(f"Sparse Attention: {', '.join(sparse_parts)}")
     

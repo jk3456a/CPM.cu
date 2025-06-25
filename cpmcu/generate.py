@@ -224,7 +224,7 @@ def run_generation(config):
     
     # Setup terminators
     terminators = []
-    if config.get('use_terminators', True):
+    if not config.get('ignore_eos', False):
         terminators.append(tokenizer.eos_token_id)
     
     # Initialize model storage

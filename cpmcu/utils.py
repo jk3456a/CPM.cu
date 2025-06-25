@@ -165,7 +165,7 @@ class ModelFactory:
             'block_window_size': config['block_window_size'],
             'sparse_topk_k': config['sparse_topk_k'],
             'sparse_switch': config['sparse_switch'],
-            'apply_compress_lse': config['apply_compress_lse'],
+            'use_compress_lse': config['use_compress_lse'],
             'memory_limit': config['memory_limit'],
             'use_enter': config.get('use_enter', False),
             'use_decode_enter': config.get('use_decode_enter', False),

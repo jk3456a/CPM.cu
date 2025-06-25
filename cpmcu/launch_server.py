@@ -222,10 +222,10 @@ async def chat_completions(request: ChatCompletionRequest):
         input_ids = tokenizer.encode(prompt, return_tensors="pt", add_special_tokens=False)
         input_ids = input_ids.to(torch.int32).cuda()
         
-        # Get stop token IDs and add EOS token if use_terminators is enabled
+        # Get stop token IDs and add EOS token if ignore_eos is disabled
         stop_tokens = get_stop_tokens(request.stop)
         config = model_config['config']
-        if config.get('use_terminators', True):
+        if not config.get('ignore_eos', False):
             if tokenizer.eos_token_id not in stop_tokens:
                 stop_tokens.append(tokenizer.eos_token_id)
         

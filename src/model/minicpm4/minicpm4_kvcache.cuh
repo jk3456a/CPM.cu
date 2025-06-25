@@ -211,9 +211,9 @@ struct MiniCPM4KVCache : KVCache<T> {
     int c1_len, c2_len;
     int prev_kv_length;
     int next_kv_length;
-    bool apply_compress_lse;
+    bool use_compress_lse;
 
-    MiniCPM4KVCache(int dim, RotaryEmbedding<T> *rotary_embedding, uint64_t *blockmask, T* stage1_score, T* pool_score, functions::TopK<T> *topk_func, bool apply_compress_lse) : KVCache<T>(dim, rotary_embedding) {
+    MiniCPM4KVCache(int dim, RotaryEmbedding<T> *rotary_embedding, uint64_t *blockmask, T* stage1_score, T* pool_score, functions::TopK<T> *topk_func, bool use_compress_lse) : KVCache<T>(dim, rotary_embedding) {
         this->blockmask = blockmask;
         this->stage1_score = stage1_score;
         this->pool_score = pool_score;
@@ -221,7 +221,7 @@ struct MiniCPM4KVCache : KVCache<T> {
         c1_stride = 16;
         c2_stride = 64;
         assert(this->dim % 32 == 0);
-        this->apply_compress_lse = apply_compress_lse;
+        this->use_compress_lse = use_compress_lse;
     }
 
     void init() {
@@ -234,7 +234,7 @@ struct MiniCPM4KVCache : KVCache<T> {
     int64_t init_output_ptr(Memory* memory, int32_t num_tokens, int32_t num_c1, int32_t num_c2, int64_t offset) {
         offset = KVCache<T>::init_output_ptr(memory, num_tokens, offset);
         offset = memory->allocate((void**)&this->c1_cache, offset, num_c1 * this->dim * sizeof(T));
-        if (apply_compress_lse) {
+        if (use_compress_lse) {
             offset = memory->allocate((void**)&this->c2_cache, offset, num_c2 * this->dim * sizeof(T));
         }
         return offset;
@@ -245,7 +245,7 @@ struct MiniCPM4KVCache : KVCache<T> {
         prev_pos = c1_len;
         c1_len = max((this->next_kv_length - c1_stride) / c1_stride, 0);
         meanpooling(stream, prev_pos, c1_len, this->dim, this->c1_cache, this->k_cache, c1_stride);
-        if (apply_compress_lse) {
+        if (use_compress_lse) {
             prev_pos = c2_len;
             c2_len = max((this->next_kv_length - c2_stride) / c2_stride, 0);
             meanpooling(stream, prev_pos, c2_len, this->dim, this->c2_cache, this->k_cache, c2_stride);
@@ -266,14 +266,14 @@ struct MiniCPM4KVCacheManager {
     uint64_t *blockmask;
     T* stage1_score, *pool_score;
     functions::TopK<T> *topk_func;
-    bool apply_compress_lse;
+    bool use_compress_lse;
 
-    MiniCPM4KVCacheManager(int num_hidden_layers, int num_key_value_heads, int head_dim, int sparse_topk_k, bool apply_compress_lse) {
+    MiniCPM4KVCacheManager(int num_hidden_layers, int num_key_value_heads, int head_dim, int sparse_topk_k, bool use_compress_lse) {
         this->num_hidden_layers = num_hidden_layers;
         this->dim = num_key_value_heads * head_dim;
         this->rotary_embedding = new RotaryEmbedding<T>(head_dim);
         this->topk_func = new functions::TopK<T>(4096, sparse_topk_k); // 256k/64
-        this->apply_compress_lse = apply_compress_lse;
+        this->use_compress_lse = use_compress_lse;
     }
 
     void init_weight_ptr(Memory* memory) {
@@ -291,7 +291,7 @@ struct MiniCPM4KVCacheManager {
 
         budget = int64_t(memory->get_remaining_memory(offset) * ratio * 0.999) / (this->num_hidden_layers * 2 * this->dim * sizeof(T)) - 1;
         for (int i = 0; i < this->num_hidden_layers; i++) {
-            caches.push_back(new MiniCPM4KVCache<T>(this->dim, this->rotary_embedding, this->blockmask, stage1_score, pool_score, topk_func, apply_compress_lse));
+            caches.push_back(new MiniCPM4KVCache<T>(this->dim, this->rotary_embedding, this->blockmask, stage1_score, pool_score, topk_func, use_compress_lse));
         }
         budget_c2 = (int)(budget / 69.0); // 1 + 4 + 64
         budget_c1 = budget_c2 * 4;

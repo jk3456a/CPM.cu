@@ -154,7 +154,7 @@ void init_minicpm4_model(
     int block_window_size,
     int sparse_topk_k,
     int sparse_switch,
-    bool apply_compress_lse
+    bool use_compress_lse
 ) {
     init_resources();
 
@@ -177,7 +177,7 @@ void init_minicpm4_model(
             block_window_size,
             sparse_topk_k,
             sparse_switch,
-            apply_compress_lse
+            use_compress_lse
         );
     });
 
@@ -243,7 +243,7 @@ void init_w4a16_gptq_marlin_minicpm4_model(
     int block_window_size,
     int sparse_topk_k,
     int sparse_switch,
-    bool apply_compress_lse
+    bool use_compress_lse
 ) {
     init_resources();
 
@@ -267,7 +267,7 @@ void init_w4a16_gptq_marlin_minicpm4_model(
             block_window_size,
             sparse_topk_k,
             sparse_switch,
-            apply_compress_lse
+            use_compress_lse
         );
     });
 

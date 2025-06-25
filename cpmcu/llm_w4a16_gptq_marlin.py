@@ -31,7 +31,7 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
                  block_window_size: int = 32,
                  sparse_topk_k: int = 32,
                  sparse_switch: int = 8192,
-                 apply_compress_lse: bool = False,
+                 use_compress_lse: bool = False,
                  use_enter: bool = False,
                  use_decode_enter: bool = False,
                  temperature: float = 0.0,
@@ -88,7 +88,7 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
                 block_window_size,
                 sparse_topk_k,
                 sparse_switch,
-                apply_compress_lse,
+                use_compress_lse,
             )
         else:
             C.init_w4a16_gptq_marlin_base_model(
