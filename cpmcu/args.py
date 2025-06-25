@@ -39,8 +39,6 @@ def add_model_config_args(parser: argparse.ArgumentParser):
                            help='Model type (default: auto-detect)')
     model_group.add_argument('--dtype', type=str, default='float16', choices=['float16', 'bfloat16'],
                             help='Model dtype (default: float16)')
-    model_group.add_argument('--chunk-length', '--chunk_length', type=int, default=2048,
-                            help='Chunked prefill size (default: 2048)')
     model_group.add_argument('--minicpm4-yarn', '--minicpm4_yarn', default=False,
                             type=str2bool, nargs='?', const=True,
                             help='Enable MiniCPM4 YARN for long context support (default: False)')
@@ -52,6 +50,8 @@ def add_model_config_args(parser: argparse.ArgumentParser):
                             help='Use CUDA graph optimization (default: True)')
     system_group.add_argument('--memory-limit', '--memory_limit', type=float, default=0.9,
                             help='Memory limit (default: 0.9)')
+    system_group.add_argument('--chunk-length', '--chunk_length', type=int, default=2048,
+                            help='Chunked prefill size (default: 2048)')
 
     # Speculative Decoding
     spec_group = parser.add_argument_group('Speculative Decoding')
@@ -151,69 +151,80 @@ def parse_test_args() -> argparse.Namespace:
 
 
 def display_config_summary(args: argparse.Namespace, title: str = "Configuration Parameters"):
-    """Display configuration parameter summary"""
-    print("=" * 50)
+    """Display configuration parameter summary grouped by categories"""
+    print("=" * 60)
     print(f"{title}:")
-    print("=" * 50)
+    print("=" * 60)
     
-    # Model information
-    print(f"Model: {getattr(args, 'model_path', 'N/A')}")
-    if hasattr(args, 'draft_model_path') and args.draft_model_path:
-        print(f"Draft Model: {args.draft_model_path}")
-    if hasattr(args, 'frspec_path') and args.frspec_path:
-        print(f"FRSpec: {args.frspec_path}")
+    # Model Configuration Group
+    print("Model Configuration:")
+    print(f"  • Model Path: {getattr(args, 'model_path', 'N/A')}")
+    print(f"  • Model Type: {getattr(args, 'model_type', 'auto')}")
+    print(f"  • Data Type: {getattr(args, 'dtype', 'float16')}")
+    if hasattr(args, 'draft_model_path') and getattr(args, 'draft_model_path'):
+        print(f"  • Draft Model: {args.draft_model_path}")
+    if hasattr(args, 'frspec_path') and getattr(args, 'frspec_path'):
+        print(f"  • FRSpec Path: {args.frspec_path}")
+    if hasattr(args, 'minicpm4_yarn'):
+        print(f"  • MiniCPM4 YARN: {getattr(args, 'minicpm4_yarn', False)}")
+    print()
     
-    # Generation parameters
-    generation_parts = [f"chunk_length={args.chunk_length}"]
-    if hasattr(args, 'ignore_eos'):
-        generation_parts.append(f"ignore_eos={args.ignore_eos}")
-    if hasattr(args, 'num_generate'):
-        generation_parts.insert(0, f"num_generate={args.num_generate}")
-    if hasattr(args, 'use_stream'):
-        generation_parts.append(f"use_stream={args.use_stream}")
-    print(f"Generation: {', '.join(generation_parts)}")
+    # Server Configuration Group (only if server parameters exist)
+    if hasattr(args, 'host') or hasattr(args, 'port'):
+        print("Server Configuration:")
+        print(f"  • Host: {getattr(args, 'host', 'N/A')}")
+        print(f"  • Port: {getattr(args, 'port', 'N/A')}")
+        print()
     
-    # Sampling parameters (only for test generation)
-    if hasattr(args, 'temperature') or hasattr(args, 'random_seed'):
-        sampling_parts = []
+    # Prompt Configuration Group (only if prompt parameters exist)
+    if hasattr(args, 'prompt_file') or hasattr(args, 'prompt_text') or hasattr(args, 'use_chat_template'):
+        print("Prompt Configuration:")
+        print(f"  • Prompt File: {bool(getattr(args, 'prompt_file', None))}")
+        print(f"  • Prompt Text: {bool(getattr(args, 'prompt_text', None))}")
+        print(f"  • Use Chat Template: {getattr(args, 'use_chat_template', 'N/A')}")
+        print()
+    
+    # Generation Configuration Group (only if generation parameters exist)
+    if hasattr(args, 'num_generate') or hasattr(args, 'use_stream') or hasattr(args, 'ignore_eos') or hasattr(args, 'temperature') or hasattr(args, 'random_seed'):
+        print("Generation Configuration:")
+        if hasattr(args, 'num_generate'):
+            print(f"  • Number to Generate: {args.num_generate}")
+        if hasattr(args, 'use_stream'):
+            print(f"  • Use Stream: {args.use_stream}")
+        if hasattr(args, 'ignore_eos'):
+            print(f"  • Ignore EOS: {args.ignore_eos}")
         if hasattr(args, 'temperature'):
-            sampling_parts.append(f"temperature={args.temperature}")
-        if hasattr(args, 'random_seed') and args.random_seed is not None:
-            sampling_parts.append(f"random_seed={args.random_seed}")
-        if sampling_parts:
-            print(f"Sampling: {', '.join(sampling_parts)}")
+            print(f"  • Temperature: {args.temperature}")
+        if hasattr(args, 'random_seed'):
+            print(f"  • Random Seed: {args.random_seed}")
+        print()
     
-    # Demo parameters
-    demo_parts = []
-    if hasattr(args, 'use_enter'):
-        demo_parts.append(f"use_enter={args.use_enter}")
-    if hasattr(args, 'use_decode_enter'):
-        demo_parts.append(f"use_decode_enter={args.use_decode_enter}")
-    if demo_parts:
-        print(f"Demo: {', '.join(demo_parts)}")
+    # System Configuration Group
+    print("System Configuration:")
+    print(f"  • CUDA Graph: {getattr(args, 'cuda_graph', True)}")
+    print(f"  • Memory Limit: {getattr(args, 'memory_limit', 0.9)}")
+    print(f"  • Chunked Prefill Size: {getattr(args, 'chunk_length', 2048)}")
+    print()
     
-    # System parameters
-    print(f"Others: dtype={args.dtype}, cuda_graph={args.cuda_graph}, memory_limit={args.memory_limit}")
+    # Speculative Decoding Group (only if draft model is provided)
+    if hasattr(args, 'draft_model_path') and getattr(args, 'draft_model_path'):
+        print("Speculative Decoding:")
+        print(f"  • Window Size: {getattr(args, 'spec_window_size', 1024)}")
+        print(f"  • Number of Iterations: {getattr(args, 'spec_num_iter', 2)}")
+        print(f"  • Top-K per Iteration: {getattr(args, 'spec_topk_per_iter', 10)}")
+        print(f"  • Tree Size: {getattr(args, 'spec_tree_size', 12)}")
+        print(f"  • FRSpec Vocab Size: {getattr(args, 'frspec_vocab_size', 32768)}")
+        print()
     
-    # Sparse attention parameters (if enabled)
+    # Sparse Attention Group (for MiniCPM4)
     if getattr(args, 'model_type', None) == 'minicpm4':
-        sparse_parts = [
-            f"sink_window={args.sink_window_size}",
-            f"block_window={args.block_window_size}",
-            f"sparse_topk_k={args.sparse_topk_k}",
-            f"sparse_switch={args.sparse_switch}",
-            f"compress_lse={args.use_compress_lse}"
-        ]
-        print(f"Sparse Attention: {', '.join(sparse_parts)}")
+        print("Sparse Attention:")
+        print(f"  • Sink Window Size: {getattr(args, 'sink_window_size', 1)}")
+        print(f"  • Block Window Size: {getattr(args, 'block_window_size', 8)}")
+        print(f"  • Sparse Top-K: {getattr(args, 'sparse_topk_k', 64)}")
+        print(f"  • Sparse Switch: {getattr(args, 'sparse_switch', 0)}")
+        print(f"  • Use Compress LSE: {getattr(args, 'use_compress_lse', True)}")
+        print()
     
-    # Speculative decoding parameters
-    spec_parts = [
-        f"num_iter={getattr(args, 'spec_num_iter', 2)}",
-        f"topk_per_iter={getattr(args, 'spec_topk_per_iter', 10)}",
-        f"tree_size={getattr(args, 'spec_tree_size', 12)}",
-        f"frspec_vocab_size={getattr(args, 'frspec_vocab_size', 0)}"
-    ]
-    print(f"Speculative: {', '.join(spec_parts)}")
-    
-    print("=" * 50)
+    print("=" * 60)
     print() 
