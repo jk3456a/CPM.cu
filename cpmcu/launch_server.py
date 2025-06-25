@@ -34,55 +34,121 @@ from .utils import (
     setup_frspec_vocab,
     apply_minicpm4_yarn_config
 )
-from .args import parse_server_args, ConfigurationDisplay
+from .args import parse_server_args, display_config_summary
 
 # Global model instance
 model_instance: Optional[LLM] = None
 model_config: Dict[str, Any] = {}
 
 
-class ModelInitializer:
-    """Unified model initialization manager class"""
+def initialize_model(config: Dict[str, Any]) -> LLM:
+    """Initialize model with given configuration"""
+    print(f"Loading model with configuration:")
     
-    @staticmethod
-    def initialize_model(config: Dict[str, Any]) -> LLM:
-        """Unified model initialization process"""
-        print(f"Loading model with configuration:")
+    # Setup model paths
+    model_path, draft_model_path, frspec_path = setup_model_paths(config)
+    
+    print(f"Base model path: {model_path}")
+    if draft_model_path:
+        print(f"Draft model path: {draft_model_path}")
+    
+    # Create model instance
+    model_instance = ModelFactory.create_model(model_path, draft_model_path, config)
+    
+    # Initialize model storage
+    model_instance.init_storage()
+    
+    # Apply MiniCPM4 YARN configuration if enabled
+    if config.get('minicpm4_yarn', False):
+        try:
+            apply_minicpm4_yarn_config(model_instance)
+        except Exception as e:
+            print(f"Warning: MiniCPM4 YARN configuration failed: {e}")
+    
+    # Load frequency speculative vocabulary if enabled
+    if draft_model_path and (frspec_path is not None) and (config.get('frspec_vocab_size', 0) > 0):
+        print(f"Loading frequency vocabulary from {frspec_path}")
+        frspec_result = setup_frspec_vocab(model_instance, frspec_path, config.get('frspec_vocab_size', 0))
+        if frspec_result is True:
+            print("Frequency vocabulary loaded successfully")
+        else:
+            print("Warning: Could not load frequency vocabulary")
+    
+    # Load model weights
+    print("Loading model weights...")
+    model_instance.load_from_hf()
+    print("Model loaded successfully!")
+    
+    return model_instance
+
+
+def format_messages_to_prompt(messages: list, tokenizer) -> str:
+    """Convert OpenAI messages format to a single prompt string using chat template"""
+    
+    # Convert OpenAI messages format to the format expected by chat template
+    chat_messages = []
+    
+    for message in messages:
+        chat_messages.append({
+            "role": message.role,
+            "content": message.content
+        })
+    
+    # Use tokenizer's chat template to format the prompt
+    try:
+        prompt = tokenizer.apply_chat_template(
+            chat_messages, 
+            tokenize=False, 
+            add_generation_prompt=True
+        )
+        return prompt
+    except Exception as e:
+        # Fallback to simple formatting if chat template fails
+        print(f"Warning: Chat template failed ({e}), falling back to simple formatting")
+        return simple_format_fallback(messages)
+
+
+def simple_format_fallback(messages: list) -> str:
+    """Simple formatting fallback solution"""
+    prompt_parts = []
+    
+    for message in messages:
+        role = message.role
+        content = message.content
         
-        # Setup model paths
-        model_path, draft_model_path, frspec_path = setup_model_paths(config)
-        
-        print(f"Base model path: {model_path}")
-        if draft_model_path:
-            print(f"Draft model path: {draft_model_path}")
-        
-        # Create model instance
-        model_instance = ModelFactory.create_model(model_path, draft_model_path, config)
-        
-        # Initialize model storage
-        model_instance.init_storage()
-        
-        # Apply MiniCPM4 YARN configuration if enabled
-        if config.get('minicpm4_yarn', False):
-            try:
-                apply_minicpm4_yarn_config(model_instance)
-            except Exception as e:
-                print(f"Warning: MiniCPM4 YARN configuration failed: {e}")
-        
-        # Load frequency speculative vocabulary if enabled
-        if config.get('apply_speculative', False) and frspec_path:
-            print(f"Loading frequency vocabulary from {frspec_path}")
-            if setup_frspec_vocab(model_instance, frspec_path, config.get('frspec_vocab_size', 32768)):
-                print("Frequency vocabulary loaded successfully")
-            else:
-                print("Warning: Could not load frequency vocabulary")
-        
-        # Load model weights
-        print("Loading model weights...")
-        model_instance.load_from_hf()
-        print("Model loaded successfully!")
-        
-        return model_instance
+        if role == "system":
+            prompt_parts.append(f"System: {content}")
+        elif role == "user":
+            prompt_parts.append(f"User: {content}")
+        elif role == "assistant":
+            prompt_parts.append(f"Assistant: {content}")
+    
+    # Add final assistant prompt
+    prompt_parts.append("Assistant:")
+    
+    return "\n".join(prompt_parts)
+
+
+def get_stop_tokens(stop_param: Optional[Union[str, list]] = None) -> list:
+    """Convert stop parameter to token IDs"""
+    if not stop_param:
+        return []
+    
+    if isinstance(stop_param, str):
+        stop_list = [stop_param]
+    else:
+        stop_list = stop_param
+    
+    # Convert to token IDs using tokenizer
+    stop_token_ids = []
+    for stop_str in stop_list:
+        try:
+            tokens = model_instance.tokenizer.encode(stop_str, add_special_tokens=False)
+            stop_token_ids.extend(tokens)
+        except:
+            pass
+    
+    return stop_token_ids
 
 
 @asynccontextmanager
@@ -92,7 +158,7 @@ async def lifespan(app: FastAPI):
     
     try:
         config = model_config['config']
-        model_instance = ModelInitializer.initialize_model(config)
+        model_instance = initialize_model(config)
         
     except Exception as e:
         print(f"Failed to load model: {e}")
@@ -123,79 +189,6 @@ app.add_middleware(
 )
 
 
-class MessageProcessor:
-    """Unified message processing class"""
-    
-    @staticmethod
-    def format_messages_to_prompt(messages: list, tokenizer) -> str:
-        """Convert OpenAI messages format to a single prompt string using chat template"""
-        
-        # Convert OpenAI messages format to the format expected by chat template
-        chat_messages = []
-        
-        for message in messages:
-            chat_messages.append({
-                "role": message.role,
-                "content": message.content
-            })
-        
-        # Use tokenizer's chat template to format the prompt
-        try:
-            prompt = tokenizer.apply_chat_template(
-                chat_messages, 
-                tokenize=False, 
-                add_generation_prompt=True
-            )
-            return prompt
-        except Exception as e:
-            # Fallback to simple formatting if chat template fails
-            print(f"Warning: Chat template failed ({e}), falling back to simple formatting")
-            return MessageProcessor._simple_format_fallback(messages)
-    
-    @staticmethod
-    def _simple_format_fallback(messages: list) -> str:
-        """Simple formatting fallback solution"""
-        prompt_parts = []
-        
-        for message in messages:
-            role = message.role
-            content = message.content
-            
-            if role == "system":
-                prompt_parts.append(f"System: {content}")
-            elif role == "user":
-                prompt_parts.append(f"User: {content}")
-            elif role == "assistant":
-                prompt_parts.append(f"Assistant: {content}")
-        
-        # Add final assistant prompt
-        prompt_parts.append("Assistant:")
-        
-        return "\n".join(prompt_parts)
-    
-    @staticmethod
-    def get_stop_tokens(stop_param: Optional[Union[str, list]] = None) -> list:
-        """Convert stop parameter to token IDs"""
-        if not stop_param:
-            return []
-        
-        if isinstance(stop_param, str):
-            stop_list = [stop_param]
-        else:
-            stop_list = stop_param
-        
-        # Convert to token IDs using tokenizer
-        stop_token_ids = []
-        for stop_str in stop_list:
-            try:
-                tokens = model_instance.tokenizer.encode(stop_str, add_special_tokens=False)
-                stop_token_ids.extend(tokens)
-            except:
-                pass
-        
-        return stop_token_ids
-
-
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -223,14 +216,14 @@ async def chat_completions(request: ChatCompletionRequest):
             raise HTTPException(status_code=500, detail="Tokenizer not available")
         
         # Format messages to prompt using chat template
-        prompt = MessageProcessor.format_messages_to_prompt(request.messages, tokenizer)
+        prompt = format_messages_to_prompt(request.messages, tokenizer)
         
         # Tokenize input
         input_ids = tokenizer.encode(prompt, return_tensors="pt", add_special_tokens=False)
         input_ids = input_ids.to(torch.int32).cuda()
         
         # Get stop token IDs and add EOS token if use_terminators is enabled
-        stop_tokens = MessageProcessor.get_stop_tokens(request.stop)
+        stop_tokens = get_stop_tokens(request.stop)
         config = model_config['config']
         if config.get('use_terminators', True):
             if tokenizer.eos_token_id not in stop_tokens:
@@ -295,7 +288,8 @@ async def generate_chat_completion(
     
     # Handle different return formats based on model type
     config = model_config['config']
-    if config.get('apply_speculative', False):
+    has_speculative = config.get('draft_model_path') is not None
+    if has_speculative:
         # Speculative models return: (tokens, accept_lengths, decode_time, prefill_time)
         tokens, accept_lengths, decode_time, prefill_time = gen_result
     else:
@@ -416,7 +410,6 @@ async def stream_chat_completion(
             yield f"data: {response.model_dump_json()}\n\n"
             
             # Add a small async yield to allow the event loop to process
-            # This ensures immediate delivery of each chunk
             await asyncio.sleep(0)
             
             if is_finished:
@@ -456,7 +449,7 @@ def launch_server(config: Dict[str, Any]):
     """Launch server with given configuration"""
     
     # Display configuration summary
-    ConfigurationDisplay.display_config_summary(config, "Server Configuration")
+    display_config_summary(config, "Server Configuration")
     
     # Set global model config
     global model_config
