@@ -6,6 +6,9 @@ import torch
 import math
 import argparse
 import os
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+from cpmcu.common.log_utils import logger
 from tqdm import tqdm
 
 def convert_llm(minicpm_path):
@@ -17,11 +20,11 @@ def convert_llm(minicpm_path):
     scale_depth = model.config.scale_depth
     num_layers = model.config.num_hidden_layers
     hidden_size = model.config.hidden_size
-    print(f"scale_emb = {scale_emb}")
-    print(f"dim_model_base = {dim_model_base}")
-    print(f"scale_depth = {scale_depth}")
-    print(f"num_layers = {num_layers}")
-    print(f"hidden_size = {hidden_size}")
+    logger.info(f"scale_emb = {scale_emb}")
+    logger.info(f"dim_model_base = {dim_model_base}")
+    logger.info(f"scale_depth = {scale_depth}")
+    logger.info(f"num_layers = {num_layers}")
+    logger.info(f"hidden_size = {hidden_size}")
 
     state_dict = model.state_dict()
 

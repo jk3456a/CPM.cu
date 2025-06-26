@@ -10,6 +10,7 @@ import sys
 import json
 import torch
 from huggingface_hub import snapshot_download
+from .log_utils import logger
 
 
 def detect_quantization_from_path(model_path):
@@ -56,7 +57,7 @@ def detect_model_type(model_path):
             else:
                 return 'unknown'
     except Exception as e:
-        print(f"Warning: Could not detect model type from {model_path}: {e}")
+        logger.warning(f"Could not detect model type from {model_path}: {e}")
         return 'unknown'
 
 
@@ -68,13 +69,13 @@ def setup_model_paths(config):
     # Auto-detect model type and quantization
     if config.get('model_type', 'auto') == 'auto':
         config['model_type'] = detect_model_type(model_path)
-        print(f"Auto-detected model type: {config['model_type']}")
+        logger.info(f"Auto-detected model type: {config['model_type']}")
     
     # Setup draft model for speculative decoding
     draft_model_path = None
     if config.get('draft_model_path'):
         draft_model_path = check_or_download_model(config['draft_model_path'])
-        print(f"Draft model specified, enabling speculative decoding")
+        logger.info("Draft model specified, enabling speculative decoding")
     
     # Setup FRSpec path
     frspec_path = None
@@ -86,10 +87,10 @@ def setup_model_paths(config):
             freq_file = os.path.join(frspec_path, f"freq_{vocab_size}.pt")
             if os.path.exists(freq_file):
                 frspec_path = freq_file
-                print(f"Found FRSpec file: {freq_file}")
+                logger.info(f"Found FRSpec file: {freq_file}")
             else:
                 frspec_path, config['frspec_vocab_size'] = None, 0
-                print(f"Warning: FRSpec file freq_{vocab_size}.pt not found in directory: {frspec_path}")
+                logger.warning(f"FRSpec file freq_{vocab_size}.pt not found in directory: {frspec_path}")
     else:
         config['frspec_vocab_size'] = 0
     
@@ -140,17 +141,17 @@ def create_model(model_path, draft_model_path, config):
     # Create model based on configuration
     if base_model_quantized:
         if has_draft_model:
-            print(f"Creating quantized model with Eagle speculative decoding")
+            logger.info("Creating quantized model with Eagle speculative decoding")
             return W4A16GPTQMarlinLLM_with_eagle(draft_model_path, model_path, **common_kwargs, **spec_kwargs)
         else:
-            print(f"Creating quantized model")
+            logger.info("Creating quantized model")
             return W4A16GPTQMarlinLLM(model_path, **common_kwargs)
     else:
         if has_draft_model:
-            print(f"Creating model with Eagle speculative decoding")
+            logger.info("Creating model with Eagle speculative decoding")
             return LLM_with_eagle(draft_model_path, model_path, **common_kwargs, **spec_kwargs)
         else:
-            print(f"Creating standard model")
+            logger.info("Creating standard model")
             return LLM(model_path, **common_kwargs)
 
 
@@ -160,13 +161,13 @@ def setup_frspec_vocab(llm, frspec_path, frspec_vocab_size):
         return "not_specified"
     
     if os.path.exists(frspec_path):
-        print(f"Loading frequency vocabulary from: {frspec_path}")
+        logger.info(f"Loading frequency vocabulary from: {frspec_path}")
         with open(frspec_path, 'rb') as f:
             token_id_remap = torch.tensor(torch.load(f, weights_only=True), dtype=torch.int32, device="cpu")
         llm._load("token_id_remap", token_id_remap, cls="eagle")
         return True
     else:
-        print(f"Error: FRSpec file not found: {frspec_path}")
+        logger.error(f"FRSpec file not found: {frspec_path}")
         return "not_found"
 
 
@@ -197,4 +198,4 @@ def apply_minicpm4_yarn_config(llm):
     llm.config.rope_scaling['rope_type'] = 'longrope'
     llm.config.rope_scaling['long_factor'] = yarn_factors
     llm.config.rope_scaling['short_factor'] = yarn_factors
-    print("Applied MiniCPM4 YARN rope_scaling parameters") 
+    logger.info("Applied MiniCPM4 YARN rope_scaling parameters") 

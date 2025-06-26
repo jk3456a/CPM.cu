@@ -11,6 +11,10 @@ import sys
 import torch
 from transformers import AutoTokenizer
 
+from .common.log_utils import logger, Console
+from rich.panel import Panel
+from rich.table import Table
+
 from .common.utils import (
     setup_model_paths,
     create_model,
@@ -21,32 +25,31 @@ from .common.args import parse_test_args, display_config_summary
 
 
 def print_generation_stats(stats, has_speculative=False):
-    """Print generation statistics summary"""
-    title = "Generation Summary"
-    separator = "=" * 50
+    """Print generation statistics summary using Rich."""
+    console = Console()
     
-    print(f"\n{title}")
-    print(separator)
-    
-    # Prefill information
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column(style="bold")
+    table.add_column()
+
     if stats.get('input_length') is not None:
-        print(f"Prefill length: {stats['input_length']}")
+        table.add_row("Prefill length:", str(stats['input_length']))
         if stats.get('prefill_time') is not None and stats['prefill_time'] > 0:
-            print(f"Prefill time: {stats['prefill_time']:.2f} s")
-            print(f"Prefill tokens/s: {stats['input_length'] / stats['prefill_time']:.2f}")
-    
-    # Speculative decoding statistics
+            table.add_row("Prefill time:", f"{stats['prefill_time']:.2f} s")
+            table.add_row("Prefill tokens/s:", f"{stats['input_length'] / stats['prefill_time']:.2f}")
+
     if has_speculative and stats.get('accept_lengths'):
-        mean_accept_length = sum(stats['accept_lengths']) / len(stats['accept_lengths'])
-        print(f"Mean accept length: {mean_accept_length:.2f}")
-    
-    # Decode information
+        mean_accept_length = sum(stats['accept_lengths']) / len(stats['accept_lengths']) if stats['accept_lengths'] else 0
+        table.add_row("Mean accept length:", f"{mean_accept_length:.2f}")
+
     if stats.get('decode_length'):
-        print(f"Decode length: {stats['decode_length']}")
-        
+        table.add_row("Decode length:", str(stats['decode_length']))
         if stats.get('decode_time') is not None and stats['decode_time'] > 0:
-            print(f"Decode time: {stats['decode_time']:.2f} s")
-            print(f"Decode tokens/s: {stats['decode_length'] / stats['decode_time']:.2f}")
+            table.add_row("Decode time:", f"{stats['decode_time']:.2f} s")
+            table.add_row("Decode tokens/s:", f"{stats['decode_length'] / stats['decode_time']:.2f}")
+
+    panel = Panel(table, title="[bold green]Generation Summary[/bold green]", border_style="green")
+    console.print(panel)
 
 
 def make_input(tokenizer, args):
@@ -70,13 +73,13 @@ def make_input(tokenizer, args):
                 add_generation_prompt=True
             )
         except Exception as e:
-            print(f"Warning: Failed to apply chat template: {e}, using raw prompt")
+            logger.warning(f"Failed to apply chat template: {e}, using raw prompt")
             prompt = prompt_content
     else:
         prompt = prompt_content
-        print("Using raw prompt (chat template disabled)")
+        logger.info("Using raw prompt (chat template disabled)")
     
-    print(f"Input prompt: {prompt[:100]}{'...' if len(prompt) > 100 else ''}")
+    logger.info(f"Input prompt: [dim]{prompt[:100]}{'...' if len(prompt) > 100 else ''}[/dim]")
     
     input_ids = tokenizer(prompt, return_tensors="pt")["input_ids"]
     return input_ids.to("cuda", dtype=torch.int32)
@@ -84,8 +87,9 @@ def make_input(tokenizer, args):
 
 def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
     """Run streaming generation"""
-    print("Starting streaming generation...")
-    
+    logger.info("Starting streaming generation...")
+    console = Console()
+
     try:
         results = llm.generate(
             input_ids=input_ids.view(-1),
@@ -103,7 +107,7 @@ def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
             if isinstance(result, dict):
                 if 'text' in result:
                     text = result['text']
-                    print(text, end='', flush=True)
+                    console.print(text, end='', style="bright_cyan")
                     generated_text += text
                 
                 # Update statistics from each result
@@ -115,10 +119,10 @@ def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
                     stats['accept_lengths'].append(result['accept_length'])
                     
             elif isinstance(result, str):
-                print(result, end='', flush=True)
+                console.print(result, end='', style="bright_cyan")
                 generated_text += result
         
-        print("\nStreaming generation completed!")
+        logger.success("Streaming generation completed!")
         
         # Set decode length and print statistics
         decode_length = len(tokenizer.encode(generated_text, add_special_tokens=False))
@@ -128,14 +132,15 @@ def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
         return generated_text
         
     except Exception as e:
-        print(f"Error during streaming generation: {e}")
+        logger.error(f"Error during streaming generation: {e}")
         raise RuntimeError(f"Error during streaming generation: {e}")
 
 
 def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
     """Run non-streaming generation"""
-    print("Starting non-streaming generation...")
-    
+    logger.info("Starting non-streaming generation...")
+    console = Console()
+
     try:
         results = llm.generate(
             input_ids=input_ids.view(-1),
@@ -157,8 +162,8 @@ def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
         generated_text = tokenizer.decode(tokens, skip_special_tokens=True)
         
         # Print generated text and statistics
-        print(f"\n[Generated text]\n{generated_text}")
-        
+        console.print(Panel(generated_text, title="[bold cyan]Generated Text[/bold cyan]", border_style="cyan"))
+
         # Create and populate statistics
         stats = {
             'input_length': input_length,
@@ -173,7 +178,7 @@ def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
         return generated_text
         
     except Exception as e:
-        print(f"Error during non-streaming generation: {e}")
+        logger.error(f"Error during non-streaming generation: {e}")
         raise RuntimeError(f"Error during non-streaming generation: {e}")
 
 
@@ -197,21 +202,21 @@ def run_generation(args):
     # Load tokenizer
     try:
         tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-        print(f"Loaded tokenizer from: {model_path}")
+        logger.info(f"Loaded tokenizer from: {model_path}")
     except Exception as e:
         raise RuntimeError(f"Error loading tokenizer: {e}")
     
     # Create model
     try:
         llm = create_model(model_path, draft_model_path, config)
-        print(f"Created model: {type(llm).__name__}")
+        logger.info(f"Created model: {type(llm).__name__}")
     except Exception as e:
         raise RuntimeError(f"Error creating model: {e}")
     
     # Prepare input
     try:
         input_ids = make_input(tokenizer, args)
-        print(f"Input shape: {input_ids.shape}")
+        logger.info(f"Input shape: {input_ids.shape}")
     except Exception as e:
         raise RuntimeError(f"Error preparing input: {e}")
     
@@ -221,7 +226,7 @@ def run_generation(args):
         terminators.append(tokenizer.eos_token_id)
     
     # Initialize model storage
-    print("Initializing model storage...")
+    logger.info("Initializing model storage...")
     llm.init_storage()
     
     # Apply MiniCPM4 YARN configuration if enabled
@@ -229,21 +234,21 @@ def run_generation(args):
         try:
             apply_minicpm4_yarn_config(llm)
         except Exception as e:
-            print(f"Warning: MiniCPM4 YARN configuration failed: {e}")
+            logger.warning(f"MiniCPM4 YARN configuration failed: {e}")
     
     # Load frequency speculative vocabulary if enabled (draft model exists)
     has_speculative = getattr(args, 'draft_model_path', None) is not None
     if has_speculative and (frspec_path is not None) and (getattr(args, 'frspec_vocab_size', 0) > 0):
         frspec_result = setup_frspec_vocab(llm, frspec_path, getattr(args, 'frspec_vocab_size', 0))
         if frspec_result is True:
-            print("Loaded frequency speculative vocabulary")
+            logger.success("Loaded frequency speculative vocabulary")
         else:
-            print("Warning: Could not load frequency speculative vocabulary")
+            logger.warning("Could not load frequency speculative vocabulary")
     
     # Load model weights
-    print("Loading model weights...")
+    logger.info("Loading model weights...")
     llm.load_from_hf()
-    print("Model loading completed!")
+    logger.success("Model loading completed!")
     
     # Run generation - use config dict for compatibility with existing functions
     try:
@@ -259,18 +264,20 @@ def run_generation(args):
 
 
 def main():
-    """Main entry point for generation module"""
-    # Parse arguments using unified parser
-    args = parse_test_args()
-    
+    """Entry point for the command-line interface"""
     try:
-        # Run generation (config summary will be displayed inside)
-        generated_text = run_generation(args)
-        return 0
-    except Exception as e:
-        print(f"Generation failed: {e}")
-        return 1
+        args = parse_test_args()
+        run_generation(args)
+    except (ValueError, FileNotFoundError) as e:
+        logger.error(f"Configuration error: {e}")
+        sys.exit(1)
+    except RuntimeError as e:
+        logger.error(f"Runtime error: {e}")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        logger.warning("\nGeneration interrupted by user.")
+        sys.exit(0)
 
 
 if __name__ == "__main__":
-    sys.exit(main()) 
+    main() 

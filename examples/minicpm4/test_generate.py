@@ -5,6 +5,7 @@ import sys
 import subprocess
 import argparse
 from cpmcu.common.args import str2bool
+from cpmcu.common.log_utils import logger
 
 
 def main():
@@ -54,9 +55,9 @@ def main():
         return subprocess.run(cmd_args, check=True).returncode
     except (subprocess.CalledProcessError, KeyboardInterrupt) as e:
         if isinstance(e, KeyboardInterrupt):
-            print("\nGeneration interrupted by user")
+            logger.warning("\nGeneration interrupted by user")
             return 0
-        print(f"Generation failed: {e}")
+        logger.error(f"Generation failed: {e}")
         return e.returncode
 
 

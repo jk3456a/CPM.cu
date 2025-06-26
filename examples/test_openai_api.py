@@ -3,6 +3,9 @@ import requests
 import json
 import sys
 import argparse
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from cpmcu.common.log_utils import logger
 
 def test_chat_completion(host="localhost", port=8000, stream=True):
     """Test chat completion with streaming or non-streaming mode"""

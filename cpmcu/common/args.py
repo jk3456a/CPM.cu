@@ -9,6 +9,9 @@ import argparse
 import sys
 import torch
 from typing import Dict, Any, Tuple
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 
 
 def str2bool(v):
@@ -151,81 +154,91 @@ def parse_test_args() -> argparse.Namespace:
 
 
 def display_config_summary(args: argparse.Namespace, title: str = "Configuration Parameters"):
-    """Display configuration parameter summary grouped by categories"""
-    print("=" * 60)
-    print(f"{title}:")
-    print("=" * 60)
+    """Display configuration parameter summary using Rich."""
+    console = Console()
     
-    # Model Configuration Group
-    print("Model Configuration:")
-    print(f"  • Model Path: {getattr(args, 'model_path', 'N/A')}")
-    print(f"  • Model Type: {getattr(args, 'model_type', 'auto')}")
-    print(f"  • Data Type: {getattr(args, 'dtype', 'float16')}")
-    if hasattr(args, 'draft_model_path') and getattr(args, 'draft_model_path'):
-        print(f"  • Draft Model: {args.draft_model_path}")
-    if hasattr(args, 'frspec_path') and getattr(args, 'frspec_path'):
-        print(f"  • FRSpec Path: {args.frspec_path}")
-    if hasattr(args, 'minicpm4_yarn'):
-        print(f"  • MiniCPM4 YARN: {getattr(args, 'minicpm4_yarn', False)}")
-    print()
-    
-    # Server Configuration Group (only if server parameters exist)
+    main_table = Table(box=None, show_header=False, pad_edge=False)
+
+    # Helper to add a section table
+    def add_section(title, data, color):
+        table = Table(show_header=False, box=None, padding=(0, 2, 0, 2))
+        table.add_column(style="bold")
+        table.add_column()
+        for key, value in data:
+            if value is not None:
+                styled_value = f"[green]True[/green]" if value is True else f"[red]False[/red]" if value is False else str(value)
+                table.add_row(f"{key}:", styled_value)
+        
+        panel = Panel(table, title=f"[{color}]{title}[/{color}]", border_style=color, expand=False)
+        main_table.add_row(panel)
+
+    # --- Model Configuration ---
+    model_data = [
+        ("Model Path", getattr(args, 'model_path', 'N/A')),
+        ("Model Type", getattr(args, 'model_type', 'auto')),
+        ("Data Type", getattr(args, 'dtype', 'float16')),
+        ("Draft Model", getattr(args, 'draft_model_path', None)),
+        ("FRSpec Path", getattr(args, 'frspec_path', None)),
+        ("MiniCPM4 YARN", getattr(args, 'minicpm4_yarn', False) if hasattr(args, 'minicpm4_yarn') else None),
+    ]
+    add_section("Model Configuration", [(k, v) for k, v in model_data if v is not None], "cyan")
+
+    # --- Server Configuration ---
     if hasattr(args, 'host') or hasattr(args, 'port'):
-        print("Server Configuration:")
-        print(f"  • Host: {getattr(args, 'host', 'N/A')}")
-        print(f"  • Port: {getattr(args, 'port', 'N/A')}")
-        print()
-    
-    # Prompt Configuration Group (only if prompt parameters exist)
+        server_data = [
+            ("Host", getattr(args, 'host', 'N/A')),
+            ("Port", getattr(args, 'port', 'N/A')),
+        ]
+        add_section("Server Configuration", server_data, "magenta")
+
+    # --- Prompt Configuration ---
     if hasattr(args, 'prompt_file') or hasattr(args, 'prompt_text') or hasattr(args, 'use_chat_template'):
-        print("Prompt Configuration:")
-        print(f"  • Prompt File: {bool(getattr(args, 'prompt_file', None))}")
-        print(f"  • Prompt Text: {bool(getattr(args, 'prompt_text', None))}")
-        print(f"  • Use Chat Template: {getattr(args, 'use_chat_template', 'N/A')}")
-        print()
-    
-    # Generation Configuration Group (only if generation parameters exist)
-    if hasattr(args, 'num_generate') or hasattr(args, 'use_stream') or hasattr(args, 'ignore_eos') or hasattr(args, 'temperature') or hasattr(args, 'random_seed'):
-        print("Generation Configuration:")
-        if hasattr(args, 'num_generate'):
-            print(f"  • Number to Generate: {args.num_generate}")
-        if hasattr(args, 'use_stream'):
-            print(f"  • Use Stream: {args.use_stream}")
-        if hasattr(args, 'ignore_eos'):
-            print(f"  • Ignore EOS: {args.ignore_eos}")
-        if hasattr(args, 'temperature'):
-            print(f"  • Temperature: {args.temperature}")
-        if hasattr(args, 'random_seed'):
-            print(f"  • Random Seed: {args.random_seed}")
-        print()
-    
-    # System Configuration Group
-    print("System Configuration:")
-    print(f"  • CUDA Graph: {getattr(args, 'cuda_graph', True)}")
-    print(f"  • Memory Limit: {getattr(args, 'memory_limit', 0.9)}")
-    print(f"  • Chunked Prefill Size: {getattr(args, 'chunk_length', 2048)}")
-    print()
-    
-    # Speculative Decoding Group (only if draft model is provided)
+        prompt_data = [
+            ("Prompt File", bool(getattr(args, 'prompt_file', None))),
+            ("Prompt Text", bool(getattr(args, 'prompt_text', None))),
+            ("Use Chat Template", getattr(args, 'use_chat_template', 'N/A')),
+        ]
+        add_section("Prompt Configuration", prompt_data, "yellow")
+
+    # --- Generation Configuration ---
+    if hasattr(args, 'num_generate'):
+        gen_data = [
+            ("Number to Generate", getattr(args, 'num_generate', None)),
+            ("Use Stream", getattr(args, 'use_stream', None)),
+            ("Ignore EOS", getattr(args, 'ignore_eos', None)),
+            ("Temperature", getattr(args, 'temperature', None)),
+            ("Random Seed", getattr(args, 'random_seed', None)),
+        ]
+        add_section("Generation Configuration", [(k, v) for k, v in gen_data if v is not None], "blue")
+
+    # --- System Configuration ---
+    system_data = [
+        ("CUDA Graph", getattr(args, 'cuda_graph', True)),
+        ("Memory Limit", getattr(args, 'memory_limit', 0.9)),
+        ("Chunked Prefill Size", getattr(args, 'chunk_length', 2048)),
+    ]
+    add_section("System Configuration", system_data, "white")
+
+    # --- Speculative Decoding ---
     if hasattr(args, 'draft_model_path') and getattr(args, 'draft_model_path'):
-        print("Speculative Decoding:")
-        print(f"  • Window Size: {getattr(args, 'spec_window_size', 1024)}")
-        print(f"  • Number of Iterations: {getattr(args, 'spec_num_iter', 2)}")
-        print(f"  • Top-K per Iteration: {getattr(args, 'spec_topk_per_iter', 10)}")
-        print(f"  • Tree Size: {getattr(args, 'spec_tree_size', 12)}")
-        if hasattr(args, 'frspec_path') and getattr(args, 'frspec_path'):
-            print(f"  • FRSpec Vocab Size: {getattr(args, 'frspec_vocab_size', 32768)}")
-        print()
-    
-    # Sparse Attention Group (for MiniCPM4)
+        spec_data = [
+            ("Window Size", getattr(args, 'spec_window_size', 1024)),
+            ("Number of Iterations", getattr(args, 'spec_num_iter', 2)),
+            ("Top-K per Iteration", getattr(args, 'spec_topk_per_iter', 10)),
+            ("Tree Size", getattr(args, 'spec_tree_size', 12)),
+            ("FRSpec Vocab Size", getattr(args, 'frspec_vocab_size', 32768) if hasattr(args, 'frspec_path') and args.frspec_path else None),
+        ]
+        add_section("Speculative Decoding", [(k,v) for k,v in spec_data if v is not None], "purple")
+
+    # --- Sparse Attention ---
     if getattr(args, 'model_type', None) == 'minicpm4':
-        print("Sparse Attention:")
-        print(f"  • Sink Window Size: {getattr(args, 'sink_window_size', 1)}")
-        print(f"  • Block Window Size: {getattr(args, 'block_window_size', 8)}")
-        print(f"  • Sparse Top-K: {getattr(args, 'sparse_topk_k', 64)}")
-        print(f"  • Sparse Switch: {getattr(args, 'sparse_switch', 0)}")
-        print(f"  • Use Compress LSE: {getattr(args, 'use_compress_lse', True)}")
-        print()
-    
-    print("=" * 60)
-    print() 
+        sparse_data = [
+            ("Sink Window Size", getattr(args, 'sink_window_size', 1)),
+            ("Block Window Size", getattr(args, 'block_window_size', 8)),
+            ("Sparse Top-K", getattr(args, 'sparse_topk_k', 64)),
+            ("Sparse Switch", getattr(args, 'sparse_switch', 0)),
+            ("Use Compress LSE", getattr(args, 'use_compress_lse', True)),
+        ]
+        add_section("Sparse Attention", sparse_data, "red")
+
+    console.print(Panel(main_table, title=f"[bold yellow]{title}[/bold yellow]", border_style="bold", expand=False)) 

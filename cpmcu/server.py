@@ -35,6 +35,7 @@ from .common.utils import (
     apply_minicpm4_yarn_config
 )
 from .common.args import parse_server_args, display_config_summary
+from .common.log_utils import logger
 
 # Global model instance
 model_instance: Optional[LLM] = None
@@ -43,14 +44,14 @@ model_config: Dict[str, Any] = {}
 
 def initialize_model(config: Dict[str, Any]) -> LLM:
     """Initialize model with given configuration"""
-    print(f"Loading model with configuration:")
+    logger.info("Loading model with configuration:")
     
     # Setup model paths
     model_path, draft_model_path, frspec_path = setup_model_paths(config)
     
-    print(f"Base model path: {model_path}")
+    logger.info(f"Base model path: {model_path}")
     if draft_model_path:
-        print(f"Draft model path: {draft_model_path}")
+        logger.info(f"Draft model path: {draft_model_path}")
     
     # Create model instance
     model_instance = create_model(model_path, draft_model_path, config)
@@ -63,21 +64,21 @@ def initialize_model(config: Dict[str, Any]) -> LLM:
         try:
             apply_minicpm4_yarn_config(model_instance)
         except Exception as e:
-            print(f"Warning: MiniCPM4 YARN configuration failed: {e}")
+            logger.warning(f"MiniCPM4 YARN configuration failed: {e}")
     
     # Load frequency speculative vocabulary if enabled
     if draft_model_path and (frspec_path is not None) and (config.get('frspec_vocab_size', 0) > 0):
-        print(f"Loading frequency vocabulary from {frspec_path}")
+        logger.info(f"Loading frequency vocabulary from {frspec_path}")
         frspec_result = setup_frspec_vocab(model_instance, frspec_path, config.get('frspec_vocab_size', 0))
         if frspec_result is True:
-            print("Frequency vocabulary loaded successfully")
+            logger.success("Frequency vocabulary loaded successfully")
         else:
-            print("Warning: Could not load frequency vocabulary")
+            logger.warning("Could not load frequency vocabulary")
     
     # Load model weights
-    print("Loading model weights...")
+    logger.info("Loading model weights...")
     model_instance.load_from_hf()
-    print("Model loaded successfully!")
+    logger.success("Model loaded successfully!")
     
     return model_instance
 
@@ -104,7 +105,7 @@ def format_messages_to_prompt(messages: list, tokenizer) -> str:
         return prompt
     except Exception as e:
         # Fallback to simple formatting if chat template fails
-        print(f"Warning: Chat template failed ({e}), falling back to simple formatting")
+        logger.warning(f"Chat template failed ({e}), falling back to simple formatting")
         return simple_format_fallback(messages)
 
 
@@ -161,13 +162,13 @@ async def lifespan(app: FastAPI):
         model_instance = initialize_model(config)
         
     except Exception as e:
-        print(f"Failed to load model: {e}")
+        logger.error(f"Failed to load model: {e}")
         raise
     
     yield
     
     # Cleanup
-    print("Shutting down...")
+    logger.info("Shutting down...")
     model_instance = None
 
 
@@ -455,7 +456,7 @@ def server(args: argparse.Namespace):
     global model_config
     model_config = {"config": vars(args)}
     
-    print(f"Starting CPM.cu OpenAI API Server on {getattr(args, 'host', '0.0.0.0')}:{getattr(args, 'port', 8000)}")
+    logger.info(f"Starting CPM.cu OpenAI API Server on {getattr(args, 'host', '0.0.0.0')}:{getattr(args, 'port', 8000)}")
     
     uvicorn.run(
         app,

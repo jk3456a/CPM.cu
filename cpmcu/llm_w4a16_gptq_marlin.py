@@ -7,6 +7,7 @@ from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 from safetensors.torch import load_file
 import time, math
 import torch.nn.functional as F
+from .common.log_utils import logger
 
 dtype_map = {
     torch.float16: 0,
@@ -113,7 +114,7 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
 
     def init_storage(self):
         self.max_total_length = C.init_storage()
-        print("max supported length under current memory limit: ", self.max_total_length)
+        logger.info(f"max supported length under current memory limit: {self.max_total_length}")
 
     def _load(self, name, param, dtype=None, cls=None):
         # if ".q_proj." in name or ".k_proj." in name or ".v_proj." in name or ".gate_proj." in name or ".up_proj." in name:
@@ -155,7 +156,7 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
             for suffix in supported_suffix_2:
                 files = glob.glob(os.path.join(path, f"*.{suffix}"))
                 if len(files) > 1:
-                    print(files)
+                    logger.info(f"Found files: {files}")
                     if path + "/model_gptq_marlin.safetensors" in files:
                             file = path + "/model_gptq_marlin.safetensors"
                     else:
@@ -175,7 +176,7 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
             file_list = [file]
 
         for file in file_list:
-            print(f"load from {file}")
+            logger.info(f"load from {file}")
             if file.endswith(".bin") or file.endswith(".pt"):
                 ckpt = torch.load(file, map_location="cpu")
             elif file.endswith(".safetensors"):

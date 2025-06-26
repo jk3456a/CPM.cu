@@ -3,6 +3,9 @@ import string
 import os
 import glob
 import argparse
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from cpmcu.common.log_utils import logger
 
 def collect_code_files(extensions=('.cpp', '.c', '.h', '.hpp'), 
                       dirs=('src', 'include', 'ggml/src', 'examples', 'tools'),
@@ -25,7 +28,7 @@ def collect_code_files(extensions=('.cpp', '.c', '.h', '.hpp'),
     for directory in dirs:
         if not os.path.exists(directory):
             if verbose:
-                print(f"Directory does not exist: {directory}")
+                logger.warning(f"Directory does not exist: {directory}")
             continue
             
         for ext in extensions:
@@ -58,12 +61,12 @@ def collect_code_files(extensions=('.cpp', '.c', '.h', '.hpp'),
                         file_count += 1
                         
                         if verbose:
-                            print(f"Added file (truncated): {file_path}, current total chars: {total_chars}, file count: {file_count}")
+                            logger.info(f"Added file (truncated): {file_path}, current total chars: {total_chars}, file count: {file_count}")
                         break  # Reached maximum length, exit loop
                     else:
                         # Remaining space too small to add meaningful content
                         if verbose:
-                            print(f"Skipped file: {file_path}, insufficient remaining space")
+                            logger.warning(f"Skipped file: {file_path}, insufficient remaining space")
                         continue
                 else:
                     # Add file completely
@@ -73,13 +76,13 @@ def collect_code_files(extensions=('.cpp', '.c', '.h', '.hpp'),
                     file_count += 1
                     
                     if verbose:
-                        print(f"Added file: {file_path}, current total chars: {total_chars}, file count: {file_count}")
+                        logger.info(f"Added file: {file_path}, current total chars: {total_chars}, file count: {file_count}")
                     
                     if max_length > 0 and total_chars >= max_length:
                         break  # Reached maximum length, exit loop
         except Exception as e:
             if verbose:
-                print(f"Error reading file {file_path}: {e}")
+                logger.error(f"Error reading file {file_path}: {e}")
     
     return ''.join(all_content), total_chars, file_count
 
@@ -107,4 +110,4 @@ if __name__ == "__main__":
     
     with open(args.output, "w", encoding="utf-8") as f:
         f.write(final_content)
-    print(f"Generated {args.output}, total length: {len(final_content)} characters, contains {file_count} files")
+    logger.success(f"Generated {args.output}, total length: {len(final_content)} characters, contains {file_count} files")

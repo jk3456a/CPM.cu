@@ -5,24 +5,27 @@ from tqdm import tqdm
 import torch
 import argparse
 import os
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+from cpmcu.common.log_utils import logger
 
 def main(args):
-	print(f"Generating FR index for {args.model_name} with vocab size {args.vocab_size}")
-	print(f"This may take about 5-10 minutes with 1M lines on good network connection")
-	print("Loading dataset...")
+	logger.info(f"Generating FR index for {args.model_name} with vocab size {args.vocab_size}")
+	logger.info("This may take about 5-10 minutes with 1M lines on good network connection")
+	logger.info("Loading dataset...")
 	ds = load_dataset('Salesforce/wikitext', 'wikitext-103-raw-v1', streaming=True)['train']
 	# Only take the number of samples we need to process
 	ds = ds.take(args.num_lines + 1)  # +1 to account for 0-indexing
-	print(f"Dataset limited to {args.num_lines + 1} samples")
+	logger.info(f"Dataset limited to {args.num_lines + 1} samples")
 	
-	print("Loading tokenizer...")
+	logger.info("Loading tokenizer...")
 	tokenizer = AutoTokenizer.from_pretrained(args.model_path)
-	print("Tokenizer loaded successfully")
+	logger.success("Tokenizer loaded successfully")
 
 	token_counter = Counter()
 	num_lines = args.num_lines
 	num_tokens = 0
-	print("Starting to process data...")
+	logger.info("Starting to process data...")
 	for i, d in tqdm(enumerate(ds)):
 		tokens = tokenizer.encode(d['text'])
 		token_counter.update(tokens)
@@ -34,9 +37,9 @@ def main(args):
 	ids, frequencies = zip(*sort_by_freq)
 	ids = list(ids)
 
-	print(f"processed {num_lines} items")
-	print(f"processed {num_tokens} tokens")
-	print(f"unique tokens: {len(ids)}")
+	logger.info(f"processed {num_lines} items")
+	logger.info(f"processed {num_tokens} tokens")
+	logger.info(f"unique tokens: {len(ids)}")
 	
 	os.makedirs(f'fr_index/{args.model_name}', exist_ok=True)
 			
@@ -48,10 +51,10 @@ def main(args):
 		else:
 			freq_ids = ids[:r]
 		if (r != len(freq_ids)):
-			print(f"Warning: requested vocab_size {r} but actual size: {len(freq_ids)}, file not saved")
+			logger.warning(f"requested vocab_size {r} but actual size: {len(freq_ids)}, file not saved")
 		else:
 			pt_path = f'fr_index/{args.model_name}/freq_{r}.pt'
-			print(f'save {pt_path}, actual size: {len(freq_ids)}')
+			logger.success(f'save {pt_path}, actual size: {len(freq_ids)}')
 			with open(pt_path, 'wb') as f:
 				torch.save(freq_ids, f)
 
@@ -85,5 +88,5 @@ if __name__ == '__main__':
 	)
 	
 	args = parser.parse_args()
-	print(args)
+	logger.info(f"Arguments: {args}")
 	main(args)

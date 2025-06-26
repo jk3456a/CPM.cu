@@ -5,6 +5,7 @@ import sys
 import subprocess
 import argparse
 from cpmcu.common.args import str2bool
+from cpmcu.common.log_utils import logger
 
 
 def main():
@@ -54,9 +55,9 @@ def main():
         return subprocess.run(cmd_args, check=True).returncode
     except (subprocess.CalledProcessError, KeyboardInterrupt) as e:
         if isinstance(e, KeyboardInterrupt):
-            print("\nServer interrupted by user")
+            logger.warning("\nServer interrupted by user")
             return 0
-        print(f"Server failed to start: {e}")
+        logger.error(f"Server failed to start: {e}")
         return e.returncode
 
 
