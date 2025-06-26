@@ -21,12 +21,13 @@ from .common.utils import (
     setup_frspec_vocab,
     apply_minicpm4_yarn_config
 )
-from .common.args import parse_test_args, display_config_summary
+from .common.args import parse_test_args
+from .common.display import print_config_summary
 
 
 def print_generation_stats(stats, has_speculative=False):
     """Print generation statistics summary using enhanced format."""
-    from .common.log_utils import print_performance_summary
+    from .common.display import print_performance_summary
     
     # Convert stats to the expected format
     formatted_stats = {}
@@ -183,10 +184,9 @@ def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
 
 def run_generation(args):
     """Core generation function that can be called by various frontends"""
-    from .common.log_utils import print_complete_config_summary
     
     # Display complete configuration summary
-    print_complete_config_summary(args, "Complete Configuration")
+    print_config_summary(args, "Configuration")
     
     # Validate required parameters
     if not getattr(args, 'model_path', None):

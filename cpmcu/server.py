@@ -34,7 +34,8 @@ from .common.utils import (
     setup_frspec_vocab,
     apply_minicpm4_yarn_config
 )
-from .common.args import parse_server_args, display_config_summary
+from .common.args import parse_server_args
+from .common.display import print_config_summary
 from .common.log_utils import logger
 
 # Global model instance
@@ -450,7 +451,7 @@ def server(args: argparse.Namespace):
     """Launch server with given configuration"""
     
     # Display configuration summary
-    display_config_summary(args, "Server Configuration")
+    print_config_summary(args, "Server Configuration")
     
     # Set global model config - convert args to dict for compatibility
     global model_config

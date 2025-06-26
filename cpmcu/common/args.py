@@ -151,9 +151,3 @@ def parse_test_args() -> argparse.Namespace:
     parser = create_test_parser()
     args = parser.parse_args()
     return args
-
-
-def display_config_summary(args: argparse.Namespace, title: str = "Configuration"):
-    """Display configuration parameter summary using compact format."""
-    from .log_utils import print_complete_config_summary
-    print_complete_config_summary(args, title) 
