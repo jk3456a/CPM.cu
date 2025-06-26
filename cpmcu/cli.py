@@ -25,31 +25,28 @@ from .common.args import parse_test_args, display_config_summary
 
 
 def print_generation_stats(stats, has_speculative=False):
-    """Print generation statistics summary using Rich."""
-    console = Console()
+    """Print generation statistics summary using enhanced format."""
+    from .common.log_utils import print_performance_summary
     
-    table = Table(show_header=False, box=None, padding=(0, 2))
-    table.add_column(style="bold")
-    table.add_column()
-
+    # Convert stats to the expected format
+    formatted_stats = {}
+    
     if stats.get('input_length') is not None:
-        table.add_row("Prefill length:", str(stats['input_length']))
-        if stats.get('prefill_time') is not None and stats['prefill_time'] > 0:
-            table.add_row("Prefill time:", f"{stats['prefill_time']:.2f} s")
-            table.add_row("Prefill tokens/s:", f"{stats['input_length'] / stats['prefill_time']:.2f}")
-
+        formatted_stats['prefill_length'] = stats['input_length']
+    
+    if stats.get('prefill_time') is not None:
+        formatted_stats['prefill_time'] = stats['prefill_time']
+    
+    if stats.get('decode_length') is not None:
+        formatted_stats['decode_length'] = stats['decode_length']
+    
+    if stats.get('decode_time') is not None:
+        formatted_stats['decode_time'] = stats['decode_time']
+    
     if has_speculative and stats.get('accept_lengths'):
-        mean_accept_length = sum(stats['accept_lengths']) / len(stats['accept_lengths']) if stats['accept_lengths'] else 0
-        table.add_row("Mean accept length:", f"{mean_accept_length:.2f}")
-
-    if stats.get('decode_length'):
-        table.add_row("Decode length:", str(stats['decode_length']))
-        if stats.get('decode_time') is not None and stats['decode_time'] > 0:
-            table.add_row("Decode time:", f"{stats['decode_time']:.2f} s")
-            table.add_row("Decode tokens/s:", f"{stats['decode_length'] / stats['decode_time']:.2f}")
-
-    panel = Panel(table, title="[bold green]Generation Summary[/bold green]", border_style="green")
-    console.print(panel)
+        formatted_stats['accept_lengths'] = stats['accept_lengths']
+    
+    print_performance_summary(formatted_stats)
 
 
 def make_input(tokenizer, args):
@@ -88,7 +85,7 @@ def make_input(tokenizer, args):
 def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
     """Run streaming generation"""
     logger.info("Starting streaming generation...")
-    console = Console()
+    console = Console(markup=False, highlight=False)
 
     try:
         results = llm.generate(
@@ -107,7 +104,7 @@ def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
             if isinstance(result, dict):
                 if 'text' in result:
                     text = result['text']
-                    console.print(text, end='', style="bright_cyan")
+                    console.print(text, end='', style="bright_white")
                     generated_text += text
                 
                 # Update statistics from each result
@@ -119,9 +116,10 @@ def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
                     stats['accept_lengths'].append(result['accept_length'])
                     
             elif isinstance(result, str):
-                console.print(result, end='', style="bright_cyan")
+                console.print(result, end='', style="bright_white")
                 generated_text += result
         
+        console.print()
         logger.success("Streaming generation completed!")
         
         # Set decode length and print statistics
@@ -139,7 +137,7 @@ def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
 def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
     """Run non-streaming generation"""
     logger.info("Starting non-streaming generation...")
-    console = Console()
+    console = Console(markup=False, highlight=False)
 
     try:
         results = llm.generate(
@@ -162,7 +160,8 @@ def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
         generated_text = tokenizer.decode(tokens, skip_special_tokens=True)
         
         # Print generated text and statistics
-        console.print(Panel(generated_text, title="[bold cyan]Generated Text[/bold cyan]", border_style="cyan"))
+        console.print(Panel(generated_text, title="[bold white]Generated Text[/bold white]", border_style="white"))
+        console.print()  # Add spacing after panel
 
         # Create and populate statistics
         stats = {
@@ -184,8 +183,10 @@ def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
 
 def run_generation(args):
     """Core generation function that can be called by various frontends"""
-    # Display configuration summary at the start
-    display_config_summary(args, "Generation Configuration")
+    from .common.log_utils import print_complete_config_summary
+    
+    # Display complete configuration summary
+    print_complete_config_summary(args, "Complete Configuration")
     
     # Validate required parameters
     if not getattr(args, 'model_path', None):
@@ -202,14 +203,14 @@ def run_generation(args):
     # Load tokenizer
     try:
         tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-        logger.info(f"Loaded tokenizer from: {model_path}")
+        logger.info(f"Loaded tokenizer from: [cyan]{model_path}[/cyan]")
     except Exception as e:
         raise RuntimeError(f"Error loading tokenizer: {e}")
     
     # Create model
     try:
         llm = create_model(model_path, draft_model_path, config)
-        logger.info(f"Created model: {type(llm).__name__}")
+        logger.info(f"Created model: [yellow]{type(llm).__name__}[/yellow]")
     except Exception as e:
         raise RuntimeError(f"Error creating model: {e}")
     
