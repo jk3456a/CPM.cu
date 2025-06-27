@@ -11,9 +11,7 @@ import sys
 import torch
 from transformers import AutoTokenizer
 
-from .common.log_utils import logger, Console
-from rich.panel import Panel
-from rich.table import Table
+from .common.log_utils import logger
 
 from .common.utils import (
     setup_model_paths,
@@ -24,11 +22,8 @@ from .common.utils import (
 from .common.args import parse_test_args
 from .common.display import (
     print_config_summary, 
-    TextStreamer,
-    display_text
+    TextStreamer
 )
-from rich.panel import Panel
-
 
 def print_generation_stats(stats, has_speculative=False):
     """Print generation statistics summary using enhanced format."""
@@ -128,8 +123,6 @@ def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
                     stream_display.update(result)
                     generated_text += result
         
-        logger.success("Streaming generation completed!")
-        
         # Set decode length and print statistics
         decode_length = len(tokenizer.encode(generated_text, add_special_tokens=False))
         stats['decode_length'] = decode_length
@@ -167,8 +160,9 @@ def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
         # Decode tokens and handle edge cases
         generated_text = tokenizer.decode(tokens, skip_special_tokens=True) or ""
         
-        # Create and display panel
-        display_text(generated_text, title="Generated Response")
+        # Create and display panel using TextStreamer for consistency
+        with TextStreamer("Generated Response") as stream_display:
+            stream_display.set_text(generated_text)
 
         # Create and populate statistics
         stats = {

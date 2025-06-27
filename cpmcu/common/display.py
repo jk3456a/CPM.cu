@@ -220,29 +220,29 @@ class TextStreamer:
     def __init__(self, title="Generated Response"):
         self.title = title
         self.current_text = ""
-        self.console = Console(markup=False, highlight=False)
-        self.live = None
+        self.started = False
         
     def __enter__(self):
-        panel = _create_panel("", self.title)
-        self.live = Live(panel, refresh_per_second=10, console=self.console)
-        self.live.__enter__()
+        # Print title at start
+        _display_console.print(f"\n[bold green]{self.title}[/bold green]")
+        _display_console.print("─" * 50)
+        self.started = True
         return self
         
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.live:
-            self.live.__exit__(exc_type, exc_val, exc_tb)
+        if self.started:
+            _display_console.print("\n" + "─" * 50)
             
     def update(self, new_text):
-        """Append new text and update display"""
-        if new_text is not None:
+        """Append new text and update display - simple print"""
+        if new_text is not None and self.started:
             self.current_text += new_text
-        if self.live:
-            self.live.update(_create_panel(self.current_text, self.title))
+            # Simple print without end parameter for natural line breaks
+            print(new_text, end="", flush=True)
         
     def set_text(self, text):
         """Replace current text and update display"""
-        self.current_text = text if text is not None else ""
-        if self.live:
-            self.live.update(_create_panel(self.current_text, self.title))
+        if self.started:
+            self.current_text = text if text is not None else ""
+            print(self.current_text, end="", flush=True)
 
