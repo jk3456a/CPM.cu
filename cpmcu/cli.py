@@ -22,7 +22,12 @@ from .common.utils import (
     apply_minicpm4_yarn_config
 )
 from .common.args import parse_test_args
-from .common.display import print_config_summary
+from .common.display import (
+    print_config_summary, 
+    TextStreamer,
+    display_text
+)
+from rich.panel import Panel
 
 
 def print_generation_stats(stats, has_speculative=False):
@@ -86,9 +91,8 @@ def make_input(tokenizer, args):
 
 
 def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
-    """Run streaming generation"""
+    """Run streaming generation with enhanced display"""
     logger.info("Starting streaming generation...")
-    console = Console(markup=False, highlight=False)
 
     try:
         results = llm.generate(
@@ -102,27 +106,28 @@ def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
         stats = {'input_length': len(input_ids.view(-1)), 'accept_lengths': []}
         has_speculative = config.get('draft_model_path') is not None
         
-        # Process streaming results and collect statistics
-        for result in results:
-            if isinstance(result, dict):
-                if 'text' in result:
-                    text = result['text']
-                    console.print(text, end='', style="bright_white")
-                    generated_text += text
-                
-                # Update statistics from each result
-                if 'prefill_time' in result and result['prefill_time'] > 0:
-                    stats['prefill_time'] = result['prefill_time']
-                if 'decode_time' in result and result['decode_time'] > 0:
-                    stats['decode_time'] = result['decode_time']
-                if 'accept_length' in result and result['accept_length'] > 0:
-                    stats['accept_lengths'].append(result['accept_length'])
+        # Use enhanced streaming display
+        with TextStreamer("Generated Response") as stream_display:
+            # Process streaming results and collect statistics
+            for result in results:
+                if isinstance(result, dict):
+                    if 'text' in result:
+                        text = result['text']
+                        stream_display.update(text)
+                        generated_text += text
                     
-            elif isinstance(result, str):
-                console.print(result, end='', style="bright_white")
-                generated_text += result
+                    # Update statistics from each result
+                    if 'prefill_time' in result and result['prefill_time'] > 0:
+                        stats['prefill_time'] = result['prefill_time']
+                    if 'decode_time' in result and result['decode_time'] > 0:
+                        stats['decode_time'] = result['decode_time']
+                    if 'accept_length' in result and result['accept_length'] > 0:
+                        stats['accept_lengths'].append(result['accept_length'])
+                        
+                elif isinstance(result, str):
+                    stream_display.update(result)
+                    generated_text += result
         
-        console.print()
         logger.success("Streaming generation completed!")
         
         # Set decode length and print statistics
@@ -138,9 +143,8 @@ def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
 
 
 def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
-    """Run non-streaming generation"""
+    """Run non-streaming generation with enhanced display"""
     logger.info("Starting non-streaming generation...")
-    console = Console(markup=False, highlight=False)
 
     try:
         results = llm.generate(
@@ -160,11 +164,11 @@ def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
             tokens, decode_time, prefill_time = results
             accept_lengths = None
         
-        generated_text = tokenizer.decode(tokens, skip_special_tokens=True)
+        # Decode tokens and handle edge cases
+        generated_text = tokenizer.decode(tokens, skip_special_tokens=True) or ""
         
-        # Print generated text and statistics
-        console.print(Panel(generated_text, title="[bold white]Generated Text[/bold white]", border_style="white"))
-        console.print()  # Add spacing after panel
+        # Create and display panel
+        display_text(generated_text, title="Generated Response")
 
         # Create and populate statistics
         stats = {
@@ -219,7 +223,7 @@ def run_generation(args):
     # Prepare input
     try:
         input_ids = make_input(tokenizer, args)
-        logger.info(f"Input shape: {input_ids.shape}")
+        logger.info(f"Input tokens: {input_ids.shape[1]}")
     except Exception as e:
         raise RuntimeError(f"Error preparing input: {e}")
     

@@ -6,10 +6,16 @@ Beautiful display and formatting utilities for configuration and performance sum
 """
 
 import platform
+import time
+import re
 from rich.console import Console, Group
 from rich.theme import Theme
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
+from rich.markdown import Markdown
+from rich.syntax import Syntax
+from rich.live import Live
 
 
 # Enhanced Rich Console for display
@@ -22,6 +28,16 @@ _display_console = Console(
         "dim": "dim white",
     })
 )
+
+
+def _create_panel(content, title, color="green"):
+    """Helper function to create standardized panels"""
+    if content is None:
+        content = "[dim]No content[/dim]"
+    elif content.strip() == "":
+        content = "[dim]Empty response[/dim]"
+    return Panel(content, title=f"[bold {color}]{title}[/bold {color}]", 
+                border_style=color, padding=(1, 2))
 
 
 def print_config_summary(args, title="Configuration"):
@@ -192,4 +208,41 @@ def print_performance_summary(stats):
     
     panel = Panel(table, title="[bold green]Performance Summary[/bold green]", border_style="green")
     _display_console.print(panel)
+
+
+def display_text(text, title="Generated Response"):
+    """Display text in panel mode"""
+    _display_console.print(_create_panel(text, title))
+    _display_console.print()
+
+class TextStreamer:
+    """Context manager for streaming text display"""
+    def __init__(self, title="Generated Response"):
+        self.title = title
+        self.current_text = ""
+        self.console = Console(markup=False, highlight=False)
+        self.live = None
+        
+    def __enter__(self):
+        panel = _create_panel("", self.title)
+        self.live = Live(panel, refresh_per_second=10, console=self.console)
+        self.live.__enter__()
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.live:
+            self.live.__exit__(exc_type, exc_val, exc_tb)
+            
+    def update(self, new_text):
+        """Append new text and update display"""
+        if new_text is not None:
+            self.current_text += new_text
+        if self.live:
+            self.live.update(_create_panel(self.current_text, self.title))
+        
+    def set_text(self, text):
+        """Replace current text and update display"""
+        self.current_text = text if text is not None else ""
+        if self.live:
+            self.live.update(_create_panel(self.current_text, self.title))
 
