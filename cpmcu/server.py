@@ -450,6 +450,11 @@ async def global_exception_handler(request: Request, exc: Exception):
 def server(args: argparse.Namespace):
     """Launch server with given configuration"""
     
+    # Initialize plain mode if requested
+    if hasattr(args, 'plain_log') and args.plain_log:
+        from .common.log_utils import configure_plain_mode
+        configure_plain_mode(True)
+    
     # Display configuration summary
     print_config_summary(args, "Server Configuration")
     

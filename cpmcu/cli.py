@@ -183,10 +183,15 @@ def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
 
 
 def run_generation(args):
-    """Core generation function that can be called by various frontends"""
+    """Main generation pipeline function"""
     
-    # Display complete configuration summary
-    print_config_summary(args, "Configuration")
+    # Initialize plain mode if requested
+    if hasattr(args, 'plain_log') and args.plain_log:
+        from .common.log_utils import configure_plain_mode
+        configure_plain_mode(True)
+    
+    # Display configuration
+    print_config_summary(args, "CLI Configuration")
     
     # Validate required parameters
     if not getattr(args, 'model_path', None):

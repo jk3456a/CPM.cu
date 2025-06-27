@@ -36,7 +36,8 @@ class CpmcuLogger(logging.Logger):
         if self._current_stage and self._stage_start_time:
             elapsed = time.time() - self._stage_start_time
             msg = message or f"{self._current_stage} completed"
-            self.success(f"{msg} [dim]({elapsed:.2f}s)[/dim]")
+            plain_msg = msg.replace("[dim]", "").replace("[/dim]", "")
+            self.success(f"{plain_msg} ({elapsed:.2f}s)")
             self._current_stage = None
             self._stage_start_time = None
 
@@ -54,7 +55,7 @@ _console = Console(
     })
 )
 
-_handler = RichHandler(
+_rich_handler = RichHandler(
     console=_console,
     show_time=True,
     show_path=False,
@@ -64,19 +65,37 @@ _handler = RichHandler(
     log_time_format="[%H:%M:%S]",
 )
 
-def get_logger(name="cpmcu"):
-    """Get a logger instance configured with RichHandler."""
+# Plain handler for compatibility
+_plain_handler = logging.StreamHandler()
+_plain_formatter = logging.Formatter(
+    fmt='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%H:%M:%S'
+)
+_plain_handler.setFormatter(_plain_formatter)
+
+def get_logger(name="cpmcu", use_plain=False):
+    """Get a logger instance configured with appropriate handler."""
     logger = logging.getLogger(name)
     if logger.hasHandlers():
         return typing.cast(CpmcuLogger, logger)
     
     logger.setLevel(logging.INFO)
-    logger.addHandler(_handler)
+    
+    logger.addHandler(_plain_handler if use_plain else _rich_handler)
+    
     logger.propagate = False
     return typing.cast(CpmcuLogger, logger)
 
 # Default Logger
 logger = get_logger()
+
+def update_logger_mode(use_plain=False):
+    """Update the global logger to use plain or rich mode"""
+    global logger
+    # Remove existing handlers
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+    logger.addHandler(_plain_handler if use_plain else _rich_handler)
 
 @contextmanager
 def stage_context(stage_name):
@@ -86,8 +105,14 @@ def stage_context(stage_name):
     try:
         yield
         elapsed = time.time() - start_time
-        logger.success(f"{stage_name} [dim]({elapsed:.2f}s)[/dim]")
+        logger.success(f"{stage_name} ({elapsed:.2f}s)")
     except Exception as e:
         elapsed = time.time() - start_time
-        logger.error(f"{stage_name} failed [dim]({elapsed:.2f}s)[/dim]: {e}")
+        logger.error(f"{stage_name} failed ({elapsed:.2f}s): {e}")
         raise
+
+def configure_plain_mode(use_plain=False):
+    """Configure both logging and display plain mode"""
+    from .display import set_plain_mode
+    set_plain_mode(use_plain)
+    update_logger_mode(use_plain)
