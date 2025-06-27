@@ -111,11 +111,18 @@
 #error "At least one of ENABLE_DTYPE_FP16 or ENABLE_DTYPE_BF16 must be defined"
 #endif
 
-// TODO only compile 64 for debug
+// TODO support more head dimensions
 #define HEADDIM_SWITCH(HEADDIM, ...)   \
   [&] {                                    \
+    if (HEADDIM == 64) {                   \
+      constexpr static int kHeadDim = 64;  \
+      return __VA_ARGS__();                \
+    } else if (HEADDIM == 128) {           \
       constexpr static int kHeadDim = 128; \
-      return __VA_ARGS__();              \
+      return __VA_ARGS__();                \
+    } else {                               \
+      throw std::runtime_error("Unsupported head dimension. Only 64 and 128 are supported."); \
+    }                                      \
   }()
   //   if (HEADDIM <= 32) {                   \
   //     constexpr static int kHeadDim = 32;  \

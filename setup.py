@@ -344,11 +344,14 @@ def get_sources_and_headers(dtype_set):
     """Get source files and headers based on enabled data types"""
     # Get flash attention sources
     flash_sources = []
+    supported_hdims = [64, 128]
+    
     for dtype in dtype_set:
-        if dtype == "fp16":
-            flash_sources.extend(glob.glob("src/flash_attn/src/*hdim128_fp16*.cu"))
-        elif dtype == "bf16":
-            flash_sources.extend(glob.glob("src/flash_attn/src/*hdim128_bf16*.cu"))
+        for hdim in supported_hdims:
+            if dtype == "fp16":
+                flash_sources.extend(glob.glob(f"src/flash_attn/src/*hdim{hdim}_fp16*.cu"))
+            elif dtype == "bf16":
+                flash_sources.extend(glob.glob(f"src/flash_attn/src/*hdim{hdim}_bf16*.cu"))
     
     # All sources
     sources = [
