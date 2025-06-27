@@ -42,7 +42,12 @@ def detect_model_type(model_path):
             model_type = config.get('model_type', '').lower()
             
             if 'minicpm' in arch or 'minicpm' in model_type:
-                if config.get('scale_emb', None) is not None:
+                # Use architecture parameters to distinguish MiniCPM4 from MiniCPM
+                num_hidden_layers = config.get('num_hidden_layers', 0)
+                num_key_value_heads = config.get('num_key_value_heads', 0)
+                
+                # Check if the ratio is 16 (MiniCPM4 characteristic)
+                if num_key_value_heads > 0 and num_hidden_layers / num_key_value_heads == 16:
                     return 'minicpm4'
                 else:
                     return 'minicpm'
