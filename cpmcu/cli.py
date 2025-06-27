@@ -77,7 +77,9 @@ def make_input(tokenizer, args):
         prompt = prompt_content
         logger.info("Using raw prompt (chat template disabled)")
     
-    logger.info(f"Input prompt: [dim]{prompt[:100]}{'...' if len(prompt) > 100 else ''}[/dim]")
+    # Show prompt with special characters escaped for better readability in logs
+    escaped_prompt = repr(prompt[:100])[1:-1]  # Remove outer quotes from repr()
+    logger.info(f"Input prompt: [dim]{escaped_prompt}{'...' if len(prompt) > 100 else ''}[/dim]")
     
     input_ids = tokenizer(prompt, return_tensors="pt")["input_ids"]
     return input_ids.to("cuda", dtype=torch.int32)
