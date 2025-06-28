@@ -36,7 +36,7 @@ from .common.utils import (
 )
 from .common.args import parse_server_args
 from .common.display import display
-from .common.log_utils import logger
+from .common.logging import logger
 
 # Global model instance
 model_instance: Optional[LLM] = None

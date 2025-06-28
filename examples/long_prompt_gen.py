@@ -5,7 +5,7 @@ import glob
 import argparse
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from cpmcu.common.log_utils import logger
+from cpmcu.common.logging import logger
 
 def collect_code_files(extensions=('.cpp', '.c', '.h', '.hpp'), 
                       dirs=('src', 'include', 'ggml/src', 'examples', 'tools'),

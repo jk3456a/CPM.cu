@@ -10,7 +10,7 @@ import sys
 import json
 import torch
 from huggingface_hub import snapshot_download
-from .log_utils import logger
+from .logging import logger
 
 
 def detect_quantization_from_path(model_path):
@@ -63,9 +63,8 @@ def detect_model_type(model_path):
 
 def setup_model_paths(config):
     """Setup and validate model paths with automatic feature detection"""
-    from .log_utils import stage_context
     
-    with stage_context("Setting up model paths"):
+    with logger.stage_context("Setting up model paths"):
         # Setup main model
         model_path = check_or_download_model(config['model_path'])
         
@@ -106,9 +105,8 @@ def create_model(model_path, draft_model_path, config):
     from ..llm_w4a16_gptq_marlin import W4A16GPTQMarlinLLM
     from ..speculative import LLM_with_eagle
     from ..speculative.eagle_base_quant.eagle_base_w4a16_marlin_gptq import W4A16GPTQMarlinLLM_with_eagle
-    from .log_utils import stage_context
     
-    with stage_context("Creating model instance"):
+    with logger.stage_context("Creating model instance"):
         # Auto-detect model features
         base_model_quantized = detect_quantization_from_path(model_path)
         has_draft_model = draft_model_path is not None

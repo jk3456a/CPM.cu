@@ -104,6 +104,18 @@ class Logger:
         self.logger.log(STAGE, message, *args, **kwargs)
         self.current_stage = message
         self.stage_start_time = time.time()
+
+    @contextmanager
+    def stage_context(self, stage_name):
+        """Context manager for stage logging with automatic completion tracking"""
+        self.stage(stage_name)
+        start_time = time.time()
+        try:
+            yield self
+            self.success(f"{stage_name} ({time.time() - start_time:.2f}s)")
+        except Exception as e:
+            self.error(f"{stage_name} failed ({time.time() - start_time:.2f}s): {e}")
+            raise
     
     def _setup_handler(self):
         """Setup handler using current strategy"""
@@ -119,16 +131,3 @@ class Logger:
 
 # Global logger instance (singleton)
 logger = Logger()
-
-@contextmanager
-def stage_context(stage_name, logger_instance=None):
-    """Context manager for stage logging with automatic completion tracking"""
-    log = logger_instance or logger
-    log.stage(stage_name)
-    start_time = time.time()
-    try:
-        yield log
-        log.success(f"{stage_name} ({time.time() - start_time:.2f}s)")
-    except Exception as e:
-        log.error(f"{stage_name} failed ({time.time() - start_time:.2f}s): {e}")
-        raise

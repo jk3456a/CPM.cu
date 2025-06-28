@@ -2,7 +2,6 @@ import torch
 import subprocess
 import platform
 import os
-from cpmcu.common.log_utils import logger
 
 def get_env_info():
     """
@@ -40,4 +39,4 @@ def get_env_info():
     return "\n".join(info)
 
 if __name__ == "__main__":
-    logger.info(get_env_info())
+    print(get_env_info())

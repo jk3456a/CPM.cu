@@ -5,7 +5,7 @@ import sys
 import subprocess
 import argparse
 from cpmcu.common.args import str2bool
-from cpmcu.common.log_utils import logger
+from cpmcu.common.logging import logger
 
 
 def main():

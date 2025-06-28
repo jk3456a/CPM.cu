@@ -11,7 +11,7 @@ import sys
 import torch
 from transformers import AutoTokenizer
 
-from .common.log_utils import logger
+from .common.logging import logger
 
 from .common.utils import (
     setup_model_paths,

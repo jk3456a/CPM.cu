@@ -6,7 +6,7 @@ import argparse
 import os
 import time
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from cpmcu.common.log_utils import logger, stage_context
+from cpmcu.common.logging import logger
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -54,11 +54,11 @@ def test_chat_completion(host="localhost", port=8000, stream=True):
     
     mode = "streaming" if stream else "non-streaming"
     
-    with stage_context(f"Testing {mode} chat completion"):
+    with logger.stage_context(f"Testing {mode} chat completion"):
         print_request_summary(data, url, mode.capitalize())
         
         try:
-            with stage_context("Sending API request"):
+            with logger.stage_context("Sending API request"):
                 response = requests.post(url, json=data, stream=stream, timeout=60)
                 response.raise_for_status()
             
@@ -139,7 +139,7 @@ def _handle_streaming_response(response):
 def _handle_non_streaming_response(response):
     """Handle non-streaming response with enhanced display"""
     try:
-        with stage_context("Processing response"):
+        with logger.stage_context("Processing response"):
             result = response.json()
         
         # Extract and display the content
@@ -200,7 +200,7 @@ def _print_usage_stats(usage):
 
 def check_server_health(host="localhost", port=8000):
     """Check if server is running and model is loaded"""
-    with stage_context("Checking server health"):
+    with logger.stage_context("Checking server health"):
         try:
             health_response = requests.get(f"http://{host}:{port}/health")
             health_response.raise_for_status()

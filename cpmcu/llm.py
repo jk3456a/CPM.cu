@@ -7,7 +7,7 @@ from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 from safetensors.torch import load_file
 import time, math
 import torch.nn.functional as F
-from .common.log_utils import logger
+from .common.logging import logger
 
 
 dtype_map = {
