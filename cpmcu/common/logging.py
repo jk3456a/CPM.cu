@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from rich.logging import RichHandler
 from rich.console import Console
 from rich.theme import Theme
+from rich.markup import escape
 
 # Custom log levels
 SUCCESS = 25
@@ -88,19 +89,30 @@ class Logger:
             external_logger.setLevel(logging.INFO)
             external_logger.propagate = False
     
-    def info(self, message, *args, **kwargs):
+    def _escape_message_if_needed(self, message, escape_markup=False):
+        """Escape square brackets for Rich markup compatibility if needed"""
+        if escape_markup and not self.use_plain_mode:
+            return escape(str(message))
+        return message
+
+    def info(self, message, *args, escape=False, **kwargs):
+        message = self._escape_message_if_needed(message, escape)
         self.logger.info(message, *args, **kwargs)
         
-    def success(self, message, *args, **kwargs):
+    def success(self, message, *args, escape=False, **kwargs):
+        message = self._escape_message_if_needed(message, escape)
         self.logger.log(SUCCESS, message, *args, **kwargs)
         
-    def warning(self, message, *args, **kwargs):
+    def warning(self, message, *args, escape=False, **kwargs):
+        message = self._escape_message_if_needed(message, escape)
         self.logger.warning(message, *args, **kwargs)
         
-    def error(self, message, *args, **kwargs):
+    def error(self, message, *args, escape=False, **kwargs):
+        message = self._escape_message_if_needed(message, escape)
         self.logger.error(message, *args, **kwargs)
         
-    def stage(self, message, *args, **kwargs):
+    def stage(self, message, *args, escape=False, **kwargs):
+        message = self._escape_message_if_needed(message, escape)
         self.logger.log(STAGE, message, *args, **kwargs)
         self.current_stage = message
         self.stage_start_time = time.time()
