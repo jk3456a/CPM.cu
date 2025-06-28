@@ -482,9 +482,12 @@ def main():
     # Use unified argument parsing
     args = parse_server_args()
 
-    # Initialize plain mode if requested
-    logger.switch_mode(getattr(args, 'plain_log', False))
-    display.switch_mode(getattr(args, 'plain_log', False))
+    # Configure display and logger mode before first use
+    use_plain_mode = getattr(args, 'plain_log', False)
+    from .common.display import Display
+    from .common.logging import Logger
+    Display.configure(use_plain_mode=use_plain_mode)
+    Logger.configure(use_plain_mode=use_plain_mode)
     
     # Launch server
     server(args)

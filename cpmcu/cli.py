@@ -88,7 +88,6 @@ def create_progress_callback():
     def progress_callback(event, data):
         nonlocal progress_display
         if event == 'begin':
-            from .common.display import display
             progress_display = display.create_progress(data['total_tokens'])
             progress_display.begin()
         elif event == 'advance' and progress_display:
@@ -300,8 +299,12 @@ def main():
     try:
         args = parse_test_args()
         
-        logger.switch_mode(getattr(args, 'plain_log', False))
-        display.switch_mode(getattr(args, 'plain_log', False))
+        # Configure display and logger mode before first use
+        use_plain_mode = getattr(args, 'plain_log', False)
+        from .common.display import Display
+        from .common.logging import Logger
+        Display.configure(use_plain_mode=use_plain_mode)
+        Logger.configure(use_plain_mode=use_plain_mode)
         
         run_generation(args)
 

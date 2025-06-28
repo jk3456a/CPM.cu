@@ -18,21 +18,33 @@ from rich.live import Live
 
 
 class Display:
-    """Single display object containing all display functionality"""
+    """Single display object with delayed initialization singleton"""
     
     _instance = None
+    _mode_configured = False
+    _use_plain_mode = False
+    
+    @classmethod
+    def configure(cls, use_plain_mode=False):
+        """Configure display mode before first use"""
+        if cls._instance is not None:
+            raise RuntimeError("Display already initialized, cannot configure")
+        cls._use_plain_mode = use_plain_mode
+        cls._mode_configured = True
     
     def __new__(cls):
         if cls._instance is None:
+            if not cls._mode_configured:
+                # Use default configuration if not explicitly configured
+                cls._use_plain_mode = False
+                cls._mode_configured = True
             cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+            cls._instance._init_once()
         return cls._instance
     
-    def __init__(self):
-        if self._initialized:
-            return
-            
-        self.use_plain_mode = False
+    def _init_once(self):
+        """Initialize display instance once"""
+        self.use_plain_mode = self._use_plain_mode
         self.theme = Theme({
             "success": "bold green",
             "warning": "bold yellow", 
@@ -40,13 +52,7 @@ class Display:
             "info": "cyan",
             "dim": "dim white",
         })
-        self.console = Console(theme=self.theme)
-        self._initialized = True
-    
-    def switch_mode(self, use_plain_mode):
-        """Switch display mode"""
-        self.use_plain_mode = use_plain_mode
-        self.console = None if use_plain_mode else Console(theme=self.theme)
+        self.console = None if self.use_plain_mode else Console(theme=self.theme)
     
     def render_line(self, text, style=None):
         """Render single line text"""
@@ -410,6 +416,20 @@ class DisplayProgress:
         
         return self.progress_bar
 
+class DisplayProxy:
+    """Proxy for delayed display initialization"""
+    
+    def __init__(self):
+        self._display = None
+    
+    def _get_display(self):
+        if self._display is None:
+            self._display = Display()
+        return self._display
+    
+    def __getattr__(self, name):
+        return getattr(self._get_display(), name)
 
-# Global display object (singleton)
-display = Display()
+
+# Global display instance (proxy for delayed creation)
+display = DisplayProxy()

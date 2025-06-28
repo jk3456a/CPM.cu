@@ -1,6 +1,5 @@
 import logging
 import time
-from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from rich.logging import RichHandler
 from rich.console import Console
@@ -13,80 +12,63 @@ logging.addLevelName(SUCCESS, "SUCCESS")
 logging.addLevelName(STAGE, "STAGE")
 
 
-class HandlerStrategy(ABC):
-    """Abstract strategy for logger handlers"""
-    
-    @abstractmethod
-    def create_handler(self):
-        """Create and return logging handler"""
-        pass
-
-
-class RichHandlerStrategy(HandlerStrategy):
-    """Strategy for Rich-formatted logging"""
-    
-    def create_handler(self):
-        console = Console(theme=Theme({
-            "logging.level.success": "bold green",
-            "logging.level.stage": "bold blue", 
-            "logging.level.info": "cyan",
-            "logging.level.warning": "yellow",
-            "logging.level.error": "bold red",
-        }))
-        
-        return RichHandler(
-            console=console, show_time=True, show_path=False,
-            rich_tracebacks=True, markup=True, keywords=[],
-            log_time_format="[%H:%M:%S]"
-        )
-
-
-class PlainHandlerStrategy(HandlerStrategy):
-    """Strategy for plain text logging"""
-    
-    def create_handler(self):
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter(
-            fmt='%(asctime)s [%(levelname)s] %(message)s', 
-            datefmt='%H:%M:%S'
-        ))
-        return handler
-
-
 class Logger:
-    """Unified logger with strategy-based handler management"""
+    """Unified logger with delayed initialization singleton"""
     
     _instance = None
+    _mode_configured = False
+    _use_plain_mode = False
+    
+    @classmethod
+    def configure(cls, use_plain_mode=False):
+        """Configure logger mode before first use"""
+        if cls._instance is not None:
+            raise RuntimeError("Logger already initialized, cannot configure")
+        cls._use_plain_mode = use_plain_mode
+        cls._mode_configured = True
     
     def __new__(cls):
         if cls._instance is None:
+            if not cls._mode_configured:
+                # Use default configuration if not explicitly configured
+                cls._use_plain_mode = False
+                cls._mode_configured = True
             cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+            cls._instance._init_once()
         return cls._instance
     
-    def __init__(self):
-        if self._initialized:
-            return
-            
+    def _init_once(self):
+        """Initialize logger instance once"""
+        self.use_plain_mode = self._use_plain_mode
         self.logger = logging.getLogger("cpmcu")
         self.logger.setLevel(logging.INFO)
         self.current_stage = None
         self.stage_start_time = None
-        self._strategy = RichHandlerStrategy()
-        self._setup_handler()
-        self._initialized = True
-    
-    def set_strategy(self, strategy: HandlerStrategy):
-        """Change handler strategy and update logger"""
-        self._strategy = strategy
-        self._setup_handler()
-    
-    def switch_mode(self, use_plain_mode):
-        """Switch logger mode between plain text and rich formatting"""
-        if use_plain_mode:
-            self.set_strategy(PlainHandlerStrategy())
+        
+        # Setup handler based on mode
+        if self.use_plain_mode:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter(
+                fmt='%(asctime)s [%(levelname)s] %(message)s', 
+                datefmt='%H:%M:%S'
+            ))
         else:
-            self.set_strategy(RichHandlerStrategy())
+            console = Console(theme=Theme({
+                "logging.level.success": "bold green",
+                "logging.level.stage": "bold blue", 
+                "logging.level.info": "cyan",
+                "logging.level.warning": "yellow",
+                "logging.level.error": "bold red",
+            }))
+            
+            handler = RichHandler(
+                console=console, show_time=True, show_path=False,
+                rich_tracebacks=True, markup=True, keywords=[],
+                log_time_format="[%H:%M:%S]"
+            )
+        
+        self.logger.addHandler(handler)
+        self.logger.propagate = False
     
     def info(self, message, *args, **kwargs):
         self.logger.info(message, *args, **kwargs)
@@ -116,18 +98,22 @@ class Logger:
         except Exception as e:
             self.error(f"{stage_name} failed ({time.time() - start_time:.2f}s): {e}")
             raise
+
+
+class LoggerProxy:
+    """Proxy for delayed logger initialization"""
     
-    def _setup_handler(self):
-        """Setup handler using current strategy"""
-        # Clear existing handlers
-        for handler in self.logger.handlers[:]:
-            self.logger.removeHandler(handler)
-        
-        # Add new handler from strategy
-        handler = self._strategy.create_handler()
-        self.logger.addHandler(handler)
-        self.logger.propagate = False
+    def __init__(self):
+        self._logger = None
+    
+    def _get_logger(self):
+        if self._logger is None:
+            self._logger = Logger()
+        return self._logger
+    
+    def __getattr__(self, name):
+        return getattr(self._get_logger(), name)
 
 
-# Global logger instance (singleton)
-logger = Logger()
+# Global logger instance (proxy for delayed creation)
+logger = LoggerProxy()
