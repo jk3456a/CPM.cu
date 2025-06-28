@@ -219,6 +219,15 @@ class Display:
                 ("minicpm4_yarn", "MiniCPM4 YARN", None),
             ]
         },
+        "System Configuration": {
+            "color": "bright_blue",
+            "fields": [
+                ("cuda_graph", "CUDA Graph", None),
+                ("memory_limit", "Memory Limit", None),
+                ("chunk_length", "Chunk Length", None),
+                ("plain_output", "Plain Output", None),
+            ]
+        },
         "Server Configuration": {
             "color": "bright_green",
             "fields": [("host", "Host", None), ("port", "Port", None)],
@@ -243,15 +252,6 @@ class Display:
                 ("random_seed", "Random Seed", None),
             ],
             "condition": lambda args: any(hasattr(args, f) for f in ['num_generate', 'use_stream', 'ignore_eos', 'temperature', 'random_seed'])
-        },
-        "System Configuration": {
-            "color": "bright_blue",
-            "fields": [
-                ("cuda_graph", "CUDA Graph", None),
-                ("memory_limit", "Memory Limit", None),
-                ("chunk_length", "Chunk Length", None),
-                ("plain_output", "Plain Output", None),
-            ]
         },
         "Speculative Decoding": {
             "color": "bright_magenta",
