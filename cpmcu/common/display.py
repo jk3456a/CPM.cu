@@ -72,7 +72,7 @@ class Display:
         else:
             sys_info.append(("GPU", "Not Available"))
         
-        sections = [("System Information", sys_info, "bright_yellow")]
+        sections = [("System Information", sys_info, "yellow")]
         
         # Process configuration sections
         for section_name, config in self.CONFIG_SECTIONS.items():
@@ -339,7 +339,7 @@ class DisplayProgress:
     def begin(self):
         """Start progress display"""
         if self.display.use_plain_mode:
-            print("Prefilling: 0.0% (0/{} tokens) @ 0.0 tokens/s".format(self.total_tokens), end="", flush=True)
+            print("Prefilling: 0.0% (0/{} tokens) @ estimated 0.0 tokens/s".format(self.total_tokens), end="", flush=True)
         else:
             progress = self._create_progress_bar()
             if progress:
@@ -358,13 +358,13 @@ class DisplayProgress:
         tokens_per_sec = current_tokens / elapsed_time if elapsed_time > 0 else 0.0
         
         if self.display.use_plain_mode:
-            print(f"\rPrefilling: {progress_percent:.1f}% ({current_tokens}/{self.total_tokens} tokens) @ {tokens_per_sec:.1f} tokens/s", end="", flush=True)
+            print(f"\rPrefilling: {progress_percent:.1f}% ({current_tokens}/{self.total_tokens} tokens) @ estimated {tokens_per_sec:.1f} tokens/s", end="", flush=True)
         else:
             if self.progress_bar and self.task_id is not None:
                 self.progress_bar.update(
                     self.task_id,
                     completed=current_tokens,
-                    speed=f"{tokens_per_sec:.1f} tokens/s"
+                    speed=f"estimated {tokens_per_sec:.1f} tokens/s"
                 )
                 
     def finish(self):
@@ -376,14 +376,14 @@ class DisplayProgress:
         final_tokens_per_sec = self.total_tokens / final_elapsed_time if final_elapsed_time > 0 else 0.0
         
         if self.display.use_plain_mode:
-            print(f"\rPrefilling: 100.0% ({self.total_tokens}/{self.total_tokens} tokens) @ {final_tokens_per_sec:.1f} tokens/s - Complete!")
+            print(f"\rPrefilling: 100.0% ({self.total_tokens}/{self.total_tokens} tokens) @ estimated {final_tokens_per_sec:.1f} tokens/s - Complete!")
             print()
         else:
             if self.progress_bar and self.task_id is not None:
                 self.progress_bar.update(
                     self.task_id,
                     completed=self.total_tokens,
-                    speed=f"{final_tokens_per_sec:.1f} tokens/s"
+                    speed=f"estimated {final_tokens_per_sec:.1f} tokens/s"
                 )
                 
             if self.live_display:
