@@ -61,13 +61,7 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
         scale_embed = self.config.scale_emb if hasattr(self.config, "scale_emb") else 1.0
         scale_lmhead = (self.config.dim_model_base / self.config.hidden_size) if hasattr(self.config, "dim_model_base") else 1.0
         scale_residual = self.config.scale_depth / math.sqrt(self.config.num_hidden_layers) if hasattr(self.config, "scale_depth") else 1.0
-        
-        # Print GPU memory information before initializing model
-        total_memory = torch.cuda.get_device_properties(0).total_memory
-        total_gb = total_memory / (1024**3)
-        limit_gb = total_gb * memory_limit
-        logger.info(f"GPU Memory: {total_gb:.1f}GB total, {limit_gb:.1f}GB allocated ({memory_limit:.0%})")
-        
+
         if apply_sparse:
             C.init_w4a16_gptq_marlin_minicpm4_model(
                 memory_limit,
@@ -114,7 +108,6 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
 
     def init_storage(self):
         self.max_total_length = C.init_storage()
-        logger.info(f"max supported length under current memory limit: {self.max_total_length}")
 
     def _load(self, name, param, dtype=None, cls=None):
         # if ".q_proj." in name or ".k_proj." in name or ".v_proj." in name or ".gate_proj." in name or ".up_proj." in name:

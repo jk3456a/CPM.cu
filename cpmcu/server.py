@@ -60,6 +60,14 @@ def initialize_model(config: Dict[str, Any]) -> LLM:
     # Initialize model storage
     model_instance.init_storage()
     
+    # Display GPU memory information and max supported length adjacently
+    memory_limit = config.get('memory_limit', 0.8)
+    total_memory = torch.cuda.get_device_properties(0).total_memory
+    total_gb = total_memory / (1024**3)
+    limit_gb = total_gb * memory_limit
+    logger.info(f"GPU Memory: {total_gb:.1f}GB total, {limit_gb:.1f}GB allocated ({memory_limit:.0%})")
+    logger.info(f"Maximum context length under current memory limit: {model_instance.max_total_length} tokens")
+    
     # Apply MiniCPM4 YARN configuration if enabled
     if config.get('minicpm4_yarn', False):
         try:
