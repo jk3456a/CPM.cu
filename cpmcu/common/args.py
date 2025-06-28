@@ -129,14 +129,7 @@ def create_test_parser() -> argparse.ArgumentParser:
                        type=str2bool, nargs='?', const=True,
                        help='Ignore EOS tokens during generation (default: False)')
     
-    # Interactive Features
-    interactive_group = parser.add_argument_group('Interactive Features')
-    interactive_group.add_argument('--use-enter', '--use_enter', default=False,
-                       type=str2bool, nargs='?', const=True,
-                       help='[DEPRECATED] Use enter to generate (default: False)')
-    interactive_group.add_argument('--use-decode-enter', '--use_decode_enter', default=False,
-                       type=str2bool, nargs='?', const=True,
-                       help='[DEPRECATED] Use enter before decode phase (default: False)')
+
     
     add_model_config_args(parser)
     return parser

@@ -126,8 +126,6 @@ def create_model(model_path, draft_model_path, config):
             'sparse_switch': config['sparse_switch'],
             'use_compress_lse': config['use_compress_lse'],
             'memory_limit': config['memory_limit'],
-            'use_enter': config.get('use_enter', False),
-            'use_decode_enter': config.get('use_decode_enter', False),
             'temperature': config.get('temperature', 0.0),
             'random_seed': config.get('random_seed', None),
         }

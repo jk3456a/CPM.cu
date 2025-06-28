@@ -35,7 +35,7 @@ from .common.utils import (
     apply_minicpm4_yarn_config
 )
 from .common.args import parse_server_args
-from .common.display import print_config_summary
+from .common.display import display
 from .common.log_utils import logger
 
 # Global model instance
@@ -450,13 +450,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 def server(args: argparse.Namespace):
     """Launch server with given configuration"""
     
-    # Initialize plain mode if requested
-    if hasattr(args, 'plain_log') and args.plain_log:
-        from .common.log_utils import configure_plain_mode
-        configure_plain_mode(True)
-    
     # Display configuration summary
-    print_config_summary(args, "Server Configuration")
+    display.render_config(args, "Server Configuration")
     
     # Set global model config - convert args to dict for compatibility
     global model_config
@@ -478,6 +473,10 @@ def main():
     
     # Use unified argument parsing
     args = parse_server_args()
+
+    # Initialize plain mode if requested
+    logger.switch_mode(getattr(args, 'plain_log', False))
+    display.switch_mode(getattr(args, 'plain_log', False))
     
     # Launch server
     server(args)

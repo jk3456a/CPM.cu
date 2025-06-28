@@ -20,14 +20,10 @@ from .common.utils import (
     apply_minicpm4_yarn_config
 )
 from .common.args import parse_test_args
-from .common.display import (
-    print_config_summary, 
-    TextStreamer
-)
+from .common.display import display
 
 def print_generation_stats(stats, has_speculative=False):
     """Print generation statistics summary using enhanced format."""
-    from .common.display import print_performance_summary
     
     # Convert stats to the expected format
     formatted_stats = {}
@@ -47,7 +43,7 @@ def print_generation_stats(stats, has_speculative=False):
     if has_speculative and stats.get('accept_lengths'):
         formatted_stats['accept_lengths'] = stats['accept_lengths']
     
-    print_performance_summary(formatted_stats)
+    display.render_performance(formatted_stats)
 
 
 def make_input(tokenizer, args):
@@ -85,16 +81,39 @@ def make_input(tokenizer, args):
     return input_ids.to("cuda", dtype=torch.int32)
 
 
+def create_progress_callback():
+    """Create progress callback for prefill progress display"""
+    progress_display = None
+    
+    def progress_callback(event, data):
+        nonlocal progress_display
+        if event == 'begin':
+            from .common.display import display
+            progress_display = display.create_progress(data['total_tokens'])
+            progress_display.begin()
+        elif event == 'advance' and progress_display:
+            progress_display.advance(data['current_tokens'])
+        elif event == 'finish' and progress_display:
+            progress_display.finish()
+            progress_display = None
+    
+    return progress_callback
+
+
 def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
     """Run streaming generation with enhanced display"""
     logger.info("Starting streaming generation...")
 
     try:
+        # Create progress callback for prefill
+        progress_callback = create_progress_callback()
+        
         results = llm.generate(
             input_ids=input_ids.view(-1),
             generation_length=config['num_generate'],
             teminators=terminators,
-            use_stream=True
+            use_stream=True,
+            progress_callback=progress_callback
         )
         
         generated_text = ""
@@ -102,13 +121,13 @@ def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
         has_speculative = config.get('draft_model_path') is not None
         
         # Use enhanced streaming display
-        with TextStreamer("Generated Response") as stream_display:
+        with display.create_stream("Generated Response") as stream_display:
             # Process streaming results and collect statistics
             for result in results:
                 if isinstance(result, dict):
                     if 'text' in result:
                         text = result['text']
-                        stream_display.update(text)
+                        stream_display.append(text)
                         generated_text += text
                     
                     # Update statistics from each result
@@ -120,7 +139,7 @@ def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
                         stats['accept_lengths'].append(result['accept_length'])
                         
                 elif isinstance(result, str):
-                    stream_display.update(result)
+                    stream_display.append(result)
                     generated_text += result
         
         # Set decode length and print statistics
@@ -140,11 +159,15 @@ def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
     logger.info("Starting non-streaming generation...")
 
     try:
+        # Create progress callback for prefill
+        progress_callback = create_progress_callback()
+        
         results = llm.generate(
             input_ids=input_ids.view(-1),
             generation_length=config['num_generate'],
             teminators=terminators,
-            use_stream=False
+            use_stream=False,
+            progress_callback=progress_callback
         )
         
         # Extract tokens and statistics from results
@@ -160,9 +183,9 @@ def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
         # Decode tokens and handle edge cases
         generated_text = tokenizer.decode(tokens, skip_special_tokens=True) or ""
         
-        # Create and display panel using TextStreamer for consistency
-        with TextStreamer("Generated Response") as stream_display:
-            stream_display.set_text(generated_text)
+        # Create and display panel using DisplayStream for consistency
+        with display.create_stream("Generated Response") as stream_display:
+            stream_display.replace(generated_text)
 
         # Create and populate statistics
         stats = {
@@ -185,13 +208,8 @@ def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
 def run_generation(args):
     """Main generation pipeline function"""
     
-    # Initialize plain mode if requested
-    if hasattr(args, 'plain_log') and args.plain_log:
-        from .common.log_utils import configure_plain_mode
-        configure_plain_mode(True)
-    
     # Display configuration
-    print_config_summary(args, "CLI Configuration")
+    display.render_config(args, "CLI Configuration")
     
     # Validate required parameters
     if not getattr(args, 'model_path', None):
@@ -273,7 +291,12 @@ def main():
     """Entry point for the command-line interface"""
     try:
         args = parse_test_args()
+        
+        logger.switch_mode(getattr(args, 'plain_log', False))
+        display.switch_mode(getattr(args, 'plain_log', False))
+        
         run_generation(args)
+
     except (ValueError, FileNotFoundError) as e:
         logger.error(f"Configuration error: {e}")
         sys.exit(1)
