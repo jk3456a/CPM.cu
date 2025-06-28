@@ -55,9 +55,9 @@ def add_model_config_args(parser: argparse.ArgumentParser):
                             help='Memory limit (default: 0.9)')
     system_group.add_argument('--chunk-length', '--chunk_length', type=int, default=2048,
                             help='Chunked prefill size (default: 2048)')
-    system_group.add_argument('--plain-log', '--plain_log', default=False,
+    system_group.add_argument('--plain-output', '--plain_output', default=False,
                             type=str2bool, nargs='?', const=True,
-                            help='Use plain text logging and display for maximum compatibility (default: False)')
+                            help='Use plain text output (no colors/formatting) for maximum compatibility (default: False)')
 
     # Speculative Decoding
     spec_group = parser.add_argument_group('Speculative Decoding')

@@ -467,11 +467,15 @@ def server(args: argparse.Namespace):
     
     logger.info(f"Starting CPM.cu OpenAI API Server on {getattr(args, 'host', '0.0.0.0')}:{getattr(args, 'port', 8000)}")
     
+    # Configure external loggers to use the same handler with colors
+    logger.configure_external_loggers(['uvicorn', 'uvicorn.access', 'uvicorn.error'])
+    
     uvicorn.run(
         app,
         host=getattr(args, 'host', '0.0.0.0'),
         port=getattr(args, 'port', 8000),
-        log_level="info"
+        log_config=None,  # Disable Uvicorn's default logging config
+        access_log=True
     )
 
 
@@ -483,7 +487,7 @@ def main():
     args = parse_server_args()
 
     # Configure display and logger mode before first use
-    use_plain_mode = getattr(args, 'plain_log', False)
+    use_plain_mode = getattr(args, 'plain_output', False)
     from .common.display import Display
     from .common.logging import Logger
     Display.configure(use_plain_mode=use_plain_mode)

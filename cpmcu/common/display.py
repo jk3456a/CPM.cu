@@ -250,7 +250,7 @@ class Display:
                 ("cuda_graph", "CUDA Graph", None),
                 ("memory_limit", "Memory Limit", None),
                 ("chunk_length", "Chunk Length", None),
-                ("plain_log", "Plain Log", None),
+                ("plain_output", "Plain Output", None),
             ]
         },
         "Speculative Decoding": {

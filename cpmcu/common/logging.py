@@ -45,12 +45,18 @@ class Logger:
         self.current_stage = None
         self.stage_start_time = None
         
-        # Setup handler based on mode
+        # Use the same handler creation logic for consistency
+        handler = self._create_handler()
+        self.logger.addHandler(handler)
+        self.logger.propagate = False
+
+    def _create_handler(self):
+        """Create a handler identical to CPM.cu's internal handler"""
         if self.use_plain_mode:
             handler = logging.StreamHandler()
             handler.setFormatter(logging.Formatter(
-                fmt='%(asctime)s [%(levelname)s] %(message)s', 
-                datefmt='%H:%M:%S'
+                fmt="[%(asctime)s] %(levelname)-8s %(message)s", 
+                datefmt="%H:%M:%S"
             ))
         else:
             console = Console(theme=Theme({
@@ -66,9 +72,21 @@ class Logger:
                 rich_tracebacks=True, markup=True, keywords=[],
                 log_time_format="[%H:%M:%S]"
             )
+        return handler
+
+    def configure_external_loggers(self, logger_names: list[str]) -> None:
+        """Configure external loggers to use the same handler as CPM.cu for consistent colors"""
         
-        self.logger.addHandler(handler)
-        self.logger.propagate = False
+        # Create the same handler as CPM.cu uses
+        handler = self._create_handler()
+        
+        # Configure each external logger
+        for logger_name in logger_names:
+            external_logger = logging.getLogger(logger_name)
+            external_logger.handlers.clear()  # Remove existing handlers
+            external_logger.addHandler(handler)
+            external_logger.setLevel(logging.INFO)
+            external_logger.propagate = False
     
     def info(self, message, *args, **kwargs):
         self.logger.info(message, *args, **kwargs)

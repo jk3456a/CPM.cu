@@ -300,7 +300,7 @@ def main():
         args = parse_test_args()
         
         # Configure display and logger mode before first use
-        use_plain_mode = getattr(args, 'plain_log', False)
+        use_plain_mode = getattr(args, 'plain_output', False)
         from .common.display import Display
         from .common.logging import Logger
         Display.configure(use_plain_mode=use_plain_mode)
