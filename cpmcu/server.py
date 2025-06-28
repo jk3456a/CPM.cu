@@ -1,23 +1,15 @@
 #!/usr/bin/env python3
-import os
-import sys
 import argparse
-import asyncio
 import json
 import torch
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Dict, Any, Optional, Union
+from typing import AsyncGenerator, Optional, Union
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from huggingface_hub import snapshot_download
 
-from .llm import LLM
-from .llm_w4a16_gptq_marlin import W4A16GPTQMarlinLLM
-from .speculative import LLM_with_eagle
-from .speculative.eagle_base_quant.eagle_base_w4a16_marlin_gptq import W4A16GPTQMarlinLLM_with_eagle
 from .common.api_models import (
     ChatCompletionRequest, 
     ChatCompletionResponse, 
@@ -39,11 +31,11 @@ from .common.display import display
 from .common.logging import logger
 
 # Global model instance
-model_instance: Optional[LLM] = None
-model_config: Dict[str, Any] = {}
+model_instance = None
+model_config = {}
 
 
-def initialize_model(config: Dict[str, Any]) -> LLM:
+def initialize_model(config):
     """Initialize model with given configuration"""
     logger.info("Loading model with configuration:")
     
@@ -481,7 +473,6 @@ def server(args: argparse.Namespace):
 
 def main():
     """Server entry point using unified argument processing"""
-    from .common.args import parse_server_args
     
     # Use unified argument parsing
     args = parse_server_args()

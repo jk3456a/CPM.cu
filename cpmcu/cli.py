@@ -10,9 +10,7 @@ import os
 import sys
 import torch
 from transformers import AutoTokenizer
-
 from .common.logging import logger
-
 from .common.utils import (
     setup_model_paths,
     create_model,
