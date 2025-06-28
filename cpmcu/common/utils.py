@@ -6,7 +6,6 @@ Common utility functions for generic model support.
 """
 
 import os
-import sys
 import json
 import torch
 from huggingface_hub import snapshot_download
