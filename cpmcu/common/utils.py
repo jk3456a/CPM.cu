@@ -13,15 +13,6 @@ from huggingface_hub import snapshot_download
 from .logging import logger
 
 
-def detect_quantization_from_path(model_path):
-    """Auto-detect quantization from model path"""
-    if not model_path:
-        return False
-    path_lower = model_path.lower()
-    quant_keywords = ['marlin', 'gptq', 'quant', 'awq', 'int4', 'int8', 'w4a16', 'qat']
-    return any(keyword in path_lower for keyword in quant_keywords)
-
-
 def check_or_download_model(path):
     """Check if model exists locally, otherwise download from HuggingFace"""
     if os.path.exists(path):
@@ -29,6 +20,15 @@ def check_or_download_model(path):
     else:
         cache_dir = snapshot_download(path)
         return cache_dir
+
+
+def detect_quantization_from_path(model_path):
+    """Auto-detect quantization from model path"""
+    if not model_path:
+        return False
+    path_lower = model_path.lower()
+    quant_keywords = ['marlin', 'gptq', 'quant', 'awq', 'int4', 'int8', 'w4a16', 'qat']
+    return any(keyword in path_lower for keyword in quant_keywords)
 
 
 def detect_model_type(model_path):
