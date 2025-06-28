@@ -100,9 +100,9 @@ def create_server_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def create_test_parser() -> argparse.ArgumentParser:
-    """Create test script argument parser"""
-    parser = argparse.ArgumentParser(description='CPM.cu Test Generation')
+def create_cli_parser() -> argparse.ArgumentParser:
+    """Create CLI argument parser"""
+    parser = argparse.ArgumentParser(description='CPM.cu CLI')
     
     # Prompt Configuration
     prompt_group = parser.add_argument_group('Prompt Configuration')
@@ -142,8 +142,8 @@ def parse_server_args() -> argparse.Namespace:
     return args
 
 
-def parse_test_args() -> argparse.Namespace:
-    """Parse test arguments"""
-    parser = create_test_parser()
+def parse_cli_args() -> argparse.Namespace:
+    """Parse CLI arguments"""
+    parser = create_cli_parser()
     args = parser.parse_args()
     return args

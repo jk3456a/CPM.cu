@@ -19,7 +19,7 @@ from .common.utils import (
     setup_frspec_vocab,
     apply_minicpm4_yarn_config
 )
-from .common.args import parse_test_args
+from .common.args import parse_cli_args
 from .common.display import display
 
 def print_generation_stats(stats, has_speculative=False):
@@ -297,7 +297,7 @@ def run_generation(args):
 def main():
     """Entry point for the command-line interface"""
     try:
-        args = parse_test_args()
+        args = parse_cli_args()
         
         # Configure display and logger mode before first use
         use_plain_mode = getattr(args, 'plain_output', False)
