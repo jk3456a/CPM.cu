@@ -62,7 +62,7 @@ def add_model_config_args(parser: argparse.ArgumentParser):
                            help='Speculative decoding top-k per iteration (default: 10)')
     spec_group.add_argument('--spec-tree-size', '--spec_tree_size', type=int, default=12,
                            help='Speculative decoding tree size (default: 12)')
-    spec_group.add_argument('--frspec-vocab-size', '--frspec_vocab_size', type=int, default=32768,
+    spec_group.add_argument('--frspec-vocab-size', '--frspec_vocab_size', type=int, default=32768, # TODO: fix frspec vocab size display without frspec_path
                            help='Frequent speculation vocab size (default: 32768)')
 
     # Sparse Attention
