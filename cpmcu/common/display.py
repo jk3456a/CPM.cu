@@ -228,6 +228,28 @@ class Display:
                 ("plain_output", "Plain Output", None),
             ]
         },
+        "Speculative Decoding": {
+            "color": "bright_magenta",
+            "fields": [
+                ("spec_window_size", "Window Size", None),
+                ("spec_num_iter", "Iterations", None),
+                ("spec_topk_per_iter", "Top-K per Iter", None),
+                ("spec_tree_size", "Tree Size", None),
+                ("frspec_vocab_size", "FRSpec Vocab Size", None),
+            ],
+            "condition": lambda args: hasattr(args, 'draft_model_path') and args.draft_model_path
+        },
+        "Sparse Attention": {
+            "color": "purple",
+            "fields": [
+                ("sink_window_size", "Sink Window Size", None),
+                ("block_window_size", "Block Window Size", None),
+                ("sparse_topk_k", "Sparse Top-K", None),
+                ("sparse_switch", "Sparse Switch", None),
+                ("use_compress_lse", "Use Compress LSE", None),
+            ],
+            "condition": lambda args: hasattr(args, 'model_type') and args.model_type == 'minicpm4'
+        },
         "Server Configuration": {
             "color": "bright_green",
             "fields": [("host", "Host", None), ("port", "Port", None)],
@@ -252,28 +274,6 @@ class Display:
                 ("random_seed", "Random Seed", None),
             ],
             "condition": lambda args: any(hasattr(args, f) for f in ['num_generate', 'use_stream', 'ignore_eos', 'temperature', 'random_seed'])
-        },
-        "Speculative Decoding": {
-            "color": "bright_magenta",
-            "fields": [
-                ("spec_window_size", "Window Size", None),
-                ("spec_num_iter", "Iterations", None),
-                ("spec_topk_per_iter", "Top-K per Iter", None),
-                ("spec_tree_size", "Tree Size", None),
-                ("frspec_vocab_size", "FRSpec Vocab Size", None),
-            ],
-            "condition": lambda args: hasattr(args, 'draft_model_path') and args.draft_model_path
-        },
-        "Sparse Attention": {
-            "color": "purple",
-            "fields": [
-                ("sink_window_size", "Sink Window Size", None),
-                ("block_window_size", "Block Window Size", None),
-                ("sparse_topk_k", "Sparse Top-K", None),
-                ("sparse_switch", "Sparse Switch", None),
-                ("use_compress_lse", "Use Compress LSE", None),
-            ],
-            "condition": lambda args: hasattr(args, 'model_type') and args.model_type == 'minicpm4'
         }
     }
 
