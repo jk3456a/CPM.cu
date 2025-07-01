@@ -13,13 +13,13 @@ struct MiniCPM4W4A16GPTQMarlinAttention {
 
     Norm<T> *attn_norm;
     W4A16GPTQMarlinLinear<T> *qkv_proj;
+    W4A16GPTQMarlinLinear<T> *q_proj, *k_proj, *v_proj; // belong to qkv_proj
     W4A16GPTQMarlinLinear<T> *o_proj;
     T* output;
 
     T* attn_output;
     float *softmax_lse, *softmax_lse_accum, *oaccum;
 
-    T* q_proj_output, *v_proj_output, *k_proj_output; 
     T* permute_qkv_output;
 
     int sink_window_size;
@@ -37,6 +37,9 @@ struct MiniCPM4W4A16GPTQMarlinAttention {
         this->attn_norm = new RMSNorm<T>(hidden_size, rms_norm_eps);
 
         this->qkv_proj = new W4A16GPTQMarlinLinear<T>(hidden_size, (num_attention_heads + 2*num_key_value_heads) * head_dim, group_size);
+        this->q_proj = new W4A16GPTQMarlinLinear<T>(hidden_size, num_attention_heads * head_dim, group_size);
+        this->k_proj = new W4A16GPTQMarlinLinear<T>(hidden_size, num_key_value_heads * head_dim, group_size);
+        this->v_proj = new W4A16GPTQMarlinLinear<T>(hidden_size, num_key_value_heads * head_dim, group_size);
         this->o_proj = new W4A16GPTQMarlinLinear<T>(hidden_size, num_attention_heads * head_dim, group_size);
 
         this->sink_window_size = sink_window_size;
@@ -48,6 +51,9 @@ struct MiniCPM4W4A16GPTQMarlinAttention {
     void init_weight_ptr(Memory* memory) {
         this->attn_norm->init_weight_ptr(memory);
         this->qkv_proj->init_weight_ptr(memory);
+        this->q_proj->weight = this->qkv_proj->weight;
+        this->k_proj->weight = this->q_proj->weight + hidden_size * this->num_attention_heads * this->head_dim;
+        this->v_proj->weight = this->k_proj->weight + hidden_size * this->num_key_value_heads * this->head_dim;
         this->o_proj->init_weight_ptr(memory);
     }
 
@@ -55,9 +61,9 @@ struct MiniCPM4W4A16GPTQMarlinAttention {
         int64_t attn_norm_end = this->attn_norm->init_output_ptr(memory, num_tokens, offset);
         int64_t qkv_proj_end = this->qkv_proj->init_output_ptr(memory, num_tokens, attn_norm_end);
 
-        this->q_proj_output = this->qkv_proj->output;
-        this->k_proj_output = this->qkv_proj->output + num_tokens * this->num_attention_heads * this->head_dim;
-        this->v_proj_output = this->qkv_proj->output + num_tokens * (this->num_attention_heads+this->num_key_value_heads) * this->head_dim;
+        this->q_proj->output = this->qkv_proj->output;
+        this->k_proj->output = this->q_proj->output + num_tokens * this->num_attention_heads * this->head_dim;
+        this->v_proj->output = this->k_proj->output + num_tokens * this->num_key_value_heads * this->head_dim;
         int64_t qkv_permute_end = memory->allocate((void**)&this->permute_qkv_output, qkv_proj_end, num_tokens * (this->num_attention_heads + 2*this->num_key_value_heads) * this->head_dim * sizeof(T));
         
         int64_t attn_output_end = memory->allocate((void**)&this->attn_output, offset, num_tokens * this->num_attention_heads * this->head_dim * sizeof(T));
@@ -76,6 +82,12 @@ struct MiniCPM4W4A16GPTQMarlinAttention {
     void load_to_storage(std::string name, void* ptr) {
         if (name.find("qkv_proj") != std::string::npos) {
             this->qkv_proj->load_to_storage(name, ptr);
+        } else if (name.find("q_proj") != std::string::npos) {
+            this->q_proj->load_to_storage(name, ptr);
+        } else if (name.find("k_proj") != std::string::npos) {
+            this->k_proj->load_to_storage(name, ptr);
+        } else if (name.find("v_proj") != std::string::npos) {
+            this->v_proj->load_to_storage(name, ptr);
         } else if (name.find("o_proj") != std::string::npos) {
             this->o_proj->load_to_storage(name, ptr);
         } else if (name.find("input_layernorm") != std::string::npos) {
@@ -205,20 +217,19 @@ struct MiniCPM4W4A16GPTQMarlinAttention {
 
         if (num_tokens > 1) {
             this->qkv_proj->prefill(stream, num_tokens, this->attn_norm->output, a_tmp, c_tmp);
-            permute(stream, num_tokens, this->num_attention_heads * this->head_dim, this->num_key_value_heads * this->head_dim, this->qkv_proj->output, this->permute_qkv_output); // TODO: Double check
-            q = this->permute_qkv_output;
+            permute(stream, num_tokens, this->num_attention_heads * this->head_dim, this->num_key_value_heads * this->head_dim, this->v_proj->output, this->qkv_proj->output);
         } else {
             this->qkv_proj->prefill(stream, num_tokens, this->attn_norm->output, a_tmp, c_tmp);
-            q = this->qkv_proj->output;
         }
+        q = this->qkv_proj->output;
         k = q + num_tokens * this->num_attention_heads * this->head_dim;
         v = k + num_tokens * this->num_key_value_heads * this->head_dim;
         kv_cache->rotary_embedding->prefill(stream, num_tokens, this->num_attention_heads, this->num_key_value_heads, q, k, position_ids);
 
+        copy_to_kvcache(stream, num_tokens, k, v, kv_cache, cache_length);
+
         cuda_perf_start_on_stream_f(M4Q_DECODE_ATTN_CORE, stream.stream);
         cuda_perf_start_on_stream_f(M4Q_DECODE_ATTN_STAGE1, stream.stream);
-
-        copy_to_kvcache(stream, num_tokens, k, v, kv_cache, cache_length);
 
         kv_cache->compress(stream);
 
