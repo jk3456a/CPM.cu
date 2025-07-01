@@ -24,6 +24,7 @@
 #include "core/scalar_type.hpp"
 #include "gptq_marlin.cuh"
 #include "gptq_marlin_mm.cuh"
+#include "../../utils.cuh"
 
 
 // torch::Tensor gptq_marlin_gemm(torch::Tensor& a, torch::Tensor& b_q_weight,
@@ -67,7 +68,7 @@ void gptq_marlin_gemm(T* a, int32_t* b_q_weight,
   int sms = -1;
 
   // Verify workspace size
-  TORCH_CHECK(size_n % marlin::min_thread_n == 0, "size_n = ", size_n,
+  VALUE_CHECK(size_n % marlin::min_thread_n == 0, "size_n = ", size_n,
               ", is not divisible by min_thread_n = ", marlin::min_thread_n);
 
   // int dev = a.get_device();
