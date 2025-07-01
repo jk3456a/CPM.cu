@@ -1,4 +1,6 @@
+#ifndef CPMCU_DISABLE_PYBIND11
 #include <pybind11/pybind11.h>
+#endif
 #include <cuda_runtime.h>
 #include <type_traits>
 #include <stdexcept>
@@ -506,6 +508,7 @@ void print_perf_summary() {
     perf_summary();
 }
 
+#ifndef CPMCU_DISABLE_PYBIND11
 PYBIND11_MODULE(C, m) {
     // base bind
     m.def("init_base_model", &init_base_model, "Init base model");
@@ -531,4 +534,5 @@ PYBIND11_MODULE(C, m) {
     m.def("draft", &draft, "Draft");
     m.def("verify_and_fix", &verify_and_fix, "Verify and fix");
     m.def("print_perf_summary", &print_perf_summary, "Print perf summary");
-} 
+}
+#endif 
