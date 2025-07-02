@@ -19,6 +19,7 @@ struct W4A16GPTQMarlinAttention {
 
     RMSNorm<T> *q_norm, *k_norm;
     bool use_qk_norm;
+    bool use_attn_bias;
 
     T* attn_output;
     float *softmax_lse, *softmax_lse_accum, *oaccum;
@@ -27,13 +28,14 @@ struct W4A16GPTQMarlinAttention {
 
     T* permute_qkv_output;
 
-    W4A16GPTQMarlinAttention(int hidden_size, int num_attention_heads, int num_key_value_heads, int head_dim, float rms_norm_eps, int group_size, int window_size = 0, bool use_qk_norm = false) {
+    W4A16GPTQMarlinAttention(int hidden_size, int num_attention_heads, int num_key_value_heads, int head_dim, float rms_norm_eps, int group_size, int window_size = 0, bool use_qk_norm = false, bool use_attn_bias = false) {
         this->hidden_size = hidden_size;
         this->num_attention_heads = num_attention_heads;
         this->num_key_value_heads = num_key_value_heads;
         this->head_dim = head_dim;
         this->rms_norm_eps = rms_norm_eps;
         this->use_qk_norm = use_qk_norm;
+        this->use_attn_bias = use_attn_bias;
 
         this->attn_norm = new RMSNorm<T>(hidden_size, rms_norm_eps);
 

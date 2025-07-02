@@ -34,8 +34,9 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
                  sparse_switch: int = 8192,
                  use_compress_lse: bool = False,
                  use_qk_norm: bool = False,
+                 use_attn_bias: bool = False,
                  temperature: float = 0.0,
-                 random_seed: int = None,
+                 random_seed = None,
     ):
         super().__init__()
 
@@ -55,8 +56,12 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
         else:
             self.generator = None
         
+        # For Qwen3, head_dim is explicitly specified in config and may not equal hidden_size // num_attention_heads
         if not hasattr(self.config, "head_dim"):
             self.config.head_dim = self.config.hidden_size // self.config.num_attention_heads
+        else:
+            # Qwen3 models have explicit head_dim that might be different
+            logger.info(f"Using explicit head_dim from config: {self.config.head_dim}")
         
         self.group_size = self.config.quantization_config['group_size']
         scale_embed = self.config.scale_emb if hasattr(self.config, "scale_emb") else 1.0
@@ -104,6 +109,7 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
                 scale_lmhead,
                 scale_residual,
                 use_qk_norm,
+                use_attn_bias,
             )
 
         self.logits = torch.empty((64, self.config.vocab_size), dtype=self.dtype, device="cuda")
@@ -112,8 +118,6 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
         self.max_total_length = C.init_storage()
 
     def _load(self, name, param, dtype=None, cls=None):
-        # if ".q_proj." in name or ".k_proj." in name or ".v_proj." in name or ".gate_proj." in name or ".up_proj." in name:
-        #     return
         if dtype is None:
             if 'rotary_emb' in name:
                 dtype = torch.float32
@@ -276,8 +280,8 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
         torch.cuda.synchronize()
         prefill_time = time.time() - prefill_start
         
-        if self.temperature > 0:
-            token = torch.multinomial(F.softmax(logits[0]/self.temperature, dim=-1), num_samples=1, generator=self.generator)[0]
+        if self.temperature > 0.0:
+            token = torch.multinomial(F.softmax(logits[0]/self.temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
         else:   
             token = logits[0].argmax(dim=-1).item()
 
@@ -315,8 +319,8 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
                     self.cache_length[0] = prefix_length + i
 
                     logits = self.decode(self.input_ids, self.position_ids, self.cache_length)
-                    if self.temperature > 0:
-                        token = torch.multinomial(F.softmax(logits[0]/self.temperature, dim=-1), num_samples=1, generator=self.generator)[0]
+                    if self.temperature > 0.0:
+                        token = torch.multinomial(F.softmax(logits[0]/self.temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
                     else:   
                         token = logits[0].argmax(dim=-1).item()
                     
@@ -360,7 +364,7 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
                 self.cache_length[0] = prefix_length + i
 
                 logits = self.decode(self.input_ids, self.position_ids, self.cache_length)
-                if self.temperature > 0:
+                if self.temperature > 0.0:
                     token = torch.multinomial(F.softmax(logits[0]/self.temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
                 else:
                     token = logits[0].argmax(dim=-1).item()

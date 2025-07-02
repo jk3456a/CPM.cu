@@ -41,7 +41,9 @@ def detect_model_type(model_path):
             arch = config.get('architectures', [''])[0].lower()
             model_type = config.get('model_type', '').lower()
             
-            if 'qwen3' in arch or 'qwen3' in model_type:
+            if 'qwen2' in arch or 'qwen2' in model_type:
+                return 'qwen2'
+            elif 'qwen3' in arch or 'qwen3' in model_type:
                 return 'qwen3'
             elif 'minicpm' in arch or 'minicpm' in model_type:
                 # Use architecture parameters to distinguish MiniCPM4 from MiniCPM
@@ -120,6 +122,7 @@ def create_model(model_path, draft_model_path, config):
             'cuda_graph': config['cuda_graph'],
             'apply_sparse': config.get('model_type') == 'minicpm4',
             'use_qk_norm': config.get('model_type') == 'qwen3',
+            'use_attn_bias': config.get('model_type') == 'qwen2',
             'sink_window_size': config['sink_window_size'],
             'block_window_size': config['block_window_size'],
             'sparse_topk_k': config['sparse_topk_k'],

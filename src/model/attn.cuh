@@ -71,27 +71,29 @@ struct Attention {
 
     RMSNorm<T> *q_norm, *k_norm;
     bool use_qk_norm;
+    bool use_attn_bias;
 
     T* attn_output;
     float *softmax_lse, *softmax_lse_accum, *oaccum;
 
     int window_size;
 
-    Attention(int hidden_size, int num_attention_heads, int num_key_value_heads, int head_dim, float rms_norm_eps, int window_size = 0, bool use_qk_norm = false) {
+    Attention(int hidden_size, int num_attention_heads, int num_key_value_heads, int head_dim, float rms_norm_eps, int window_size = 0, bool use_qk_norm = false, bool use_attn_bias = false) {
         this->hidden_size = hidden_size;
         this->num_attention_heads = num_attention_heads;
         this->num_key_value_heads = num_key_value_heads;
         this->head_dim = head_dim;
         this->rms_norm_eps = rms_norm_eps;
         this->use_qk_norm = use_qk_norm;
+        this->use_attn_bias = use_attn_bias;
 
         this->attn_norm = new RMSNorm<T>(hidden_size, rms_norm_eps);
 
-        this->qkv_proj = new Linear<T>(hidden_size, (num_attention_heads + 2 * num_key_value_heads) * head_dim);
-        this->q_proj = new Linear<T>(hidden_size, num_attention_heads * head_dim);
-        this->k_proj = new Linear<T>(hidden_size, num_key_value_heads * head_dim);
-        this->v_proj = new Linear<T>(hidden_size, num_key_value_heads * head_dim);
-        this->o_proj = new Linear<T>(num_attention_heads * head_dim, hidden_size);
+        this->qkv_proj = new Linear<T>(hidden_size, (num_attention_heads + 2 * num_key_value_heads) * head_dim, true, use_attn_bias);
+        this->q_proj = new Linear<T>(hidden_size, num_attention_heads * head_dim, true, use_attn_bias);
+        this->k_proj = new Linear<T>(hidden_size, num_key_value_heads * head_dim, true, use_attn_bias);
+        this->v_proj = new Linear<T>(hidden_size, num_key_value_heads * head_dim, true, use_attn_bias);
+        this->o_proj = new Linear<T>(num_attention_heads * head_dim, hidden_size, true, false); // o_proj 不需要 bias
 
         if (use_qk_norm) {
             this->q_norm = new RMSNorm<T>(head_dim, rms_norm_eps);
@@ -110,6 +112,13 @@ struct Attention {
         this->q_proj->weight = this->qkv_proj->weight;
         this->k_proj->weight = this->q_proj->weight + hidden_size * this->num_attention_heads * this->head_dim;
         this->v_proj->weight = this->k_proj->weight + hidden_size * this->num_key_value_heads * this->head_dim;
+        
+        if (this->use_attn_bias) {
+            this->q_proj->bias = this->qkv_proj->bias;
+            this->k_proj->bias = this->q_proj->bias + this->num_attention_heads * this->head_dim;
+            this->v_proj->bias = this->k_proj->bias + this->num_key_value_heads * this->head_dim;
+        }
+        
         this->o_proj->init_weight_ptr(memory);
         
         if (this->use_qk_norm) {

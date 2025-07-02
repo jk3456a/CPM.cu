@@ -35,6 +35,7 @@ class LLM(torch.nn.Module):
                  sparse_switch: int = 8192,
                  use_compress_lse: bool = False,
                  use_qk_norm: bool = False,
+                 use_attn_bias: bool = False,
                  temperature: float = 0.0,
                  random_seed: int = None,
     ):
@@ -106,6 +107,7 @@ class LLM(torch.nn.Module):
                 scale_lmhead,
                 scale_residual,
                 use_qk_norm,
+                use_attn_bias,
             )
 
         self.logits = torch.empty((64, self.config.vocab_size), dtype=self.dtype, device="cuda")
