@@ -217,11 +217,12 @@ struct MiniCPM4W4A16GPTQMarlinAttention {
 
         if (num_tokens > 1) {
             this->qkv_proj->prefill(stream, num_tokens, this->attn_norm->output, a_tmp, c_tmp);
-            permute(stream, num_tokens, this->num_attention_heads * this->head_dim, this->num_key_value_heads * this->head_dim, this->v_proj->output, this->qkv_proj->output);
+            permute(stream, num_tokens, this->num_attention_heads * this->head_dim, this->num_key_value_heads * this->head_dim, this->qkv_proj->output, this->permute_qkv_output); // TODO: Double check
+            q = this->permute_qkv_output;
         } else {
             this->qkv_proj->prefill(stream, num_tokens, this->attn_norm->output, a_tmp, c_tmp);
-        }
-        q = this->qkv_proj->output;
+            q = this->qkv_proj->output;
+        } 
         k = q + num_tokens * this->num_attention_heads * this->head_dim;
         v = k + num_tokens * this->num_key_value_heads * this->head_dim;
         kv_cache->rotary_embedding->prefill(stream, num_tokens, this->num_attention_heads, this->num_key_value_heads, q, k, position_ids);

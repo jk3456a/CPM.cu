@@ -48,22 +48,26 @@ class W4A16GPTQMarlinLLM_with_eagle(W4A16GPTQMarlinLLM_with_tree_drafter):
             if not use_rotation:
                 C.init_eagle_model(
                     self.eagle_config.eagle_num_layers,
+                    self.eagle_config.intermediate_size,
+                    self.eagle_config.num_attention_heads,
+                    self.eagle_config.num_key_value_heads,
+                    self.eagle_config.head_dim,
+                    self.eagle_config.rms_norm_eps,
                     num_iter,
                     topk_per_iter,
                     self.tree_size,
                     self.dtype_int
                 )
             else:
-                C.init_eagle_w4a16_gptq_marlin_rot_model(
-                    self.eagle_config.eagle_num_layers,
-                    num_iter,
-                    topk_per_iter,
-                    self.tree_size,
-                    self.dtype_int
-                )
+                raise NotImplementedError("Rotation is not supported in quantization mode")
         else:
             C.init_minicpm4_eagle_model(
                 self.eagle_config.eagle_num_layers,
+                self.eagle_config.intermediate_size,
+                self.eagle_config.num_attention_heads,
+                self.eagle_config.num_key_value_heads,
+                self.eagle_config.head_dim,
+                self.eagle_config.rms_norm_eps,
                 num_iter,
                 topk_per_iter,
                 self.tree_size,

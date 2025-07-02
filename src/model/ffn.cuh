@@ -59,7 +59,7 @@ struct GatedFFN : FFN<T> {
     }
 
     void load_to_storage(std::string name, void* ptr) {
-        if (name.find("gateup_proj") != std::string::npos) {
+        if (name.find("gate_up_proj") != std::string::npos) {
             this->gateup_proj->load_to_storage(name, ptr);
         } else if (name.find("gate_proj") != std::string::npos) {
             this->gate_proj->load_to_storage(name, ptr);
