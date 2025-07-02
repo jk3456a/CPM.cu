@@ -79,11 +79,11 @@ struct MiniCPM4EagleImpl : Model {
         this->use_attn_norm = use_attn_norm;
 
         kv_caches = new KVCacheManager<T>(num_layers, num_key_value_heads, head_dim);
-        if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T, true, true>>) {
-            fc1 = new W4A16GPTQMarlinLinear<T, true, true>(this->model->hidden_size, this->model->hidden_size, group_size);
+        if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T>>) {
+            fc1 = new W4A16GPTQMarlinLinear<T>(this->model->hidden_size, this->model->hidden_size, group_size, true, true);
             fc2 = new W4A16GPTQMarlinLinear<T>(this->model->hidden_size, this->model->hidden_size, group_size);
         } else {
-            fc1 = new Linear<T, true, true>(this->model->hidden_size, this->model->hidden_size);
+            fc1 = new Linear<T>(this->model->hidden_size, this->model->hidden_size, true, true);
             fc2 = new Linear<T>(this->model->hidden_size, this->model->hidden_size);
         }
         if (use_input_norm) {
@@ -130,7 +130,7 @@ struct MiniCPM4EagleImpl : Model {
     }
 
     int64_t init_output_ptr(Memory* memory, int32_t num_tokens, int64_t offset) {
-        if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T, true, true>>) {
+        if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T>>) {
             offset = memory->allocate((void**)&this->a_tmp, offset, 2 * num_tokens * this->model->hidden_size * sizeof(T));
             int reduce_max_m = marlin::determine_reduce_max_m(num_tokens, marlin::max_par);
             int reduce_n = 2 * this->model->hidden_size;
@@ -230,7 +230,7 @@ struct MiniCPM4EagleImpl : Model {
         if (use_input_norm) {
             this->input_norm1->prefill(calc_stream, num_prev, this->prev_embed, nullptr);
             this->input_norm2->prefill(calc_stream, num_prev, this->prev_hidden_state, nullptr);
-            if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T, true, true>>) {
+            if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T>>) {
                 this->fc1->prefill(calc_stream, num_prev, this->input_norm1->output, this->a_tmp, this->c_tmp);
                 this->fc2->prefill(calc_stream, num_prev, this->input_norm2->output, this->a_tmp, this->c_tmp);
             } else {
@@ -238,7 +238,7 @@ struct MiniCPM4EagleImpl : Model {
                 this->fc2->prefill(calc_stream, num_prev, this->input_norm2->output);
             }
         } else {
-            if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T, true, true>>) {
+            if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T>>) {
                 this->fc1->prefill(calc_stream, num_prev, this->prev_embed, this->a_tmp, this->c_tmp);
                 this->fc2->prefill(calc_stream, num_prev, this->prev_hidden_state, this->a_tmp, this->c_tmp);
             } else {
@@ -260,7 +260,7 @@ struct MiniCPM4EagleImpl : Model {
         if (use_input_norm) {
             this->input_norm1->prefill(calc_stream, num_prev, this->prev_embed, nullptr);
             this->input_norm2->prefill(calc_stream, num_prev, this->prev_hidden_state, nullptr);
-            if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T, true, true>>) {
+            if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T>>) {
                 this->fc1->prefill(calc_stream, num_prev, this->input_norm1->output, this->a_tmp, this->c_tmp);
                 this->fc2->prefill(calc_stream, num_prev, this->input_norm2->output, this->a_tmp, this->c_tmp);
             } else {
@@ -268,7 +268,7 @@ struct MiniCPM4EagleImpl : Model {
                 this->fc2->prefill(calc_stream, num_prev, this->input_norm2->output);
             }
         } else {
-            if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T, true, true>>) {
+            if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T>>) {
                 this->fc1->prefill(calc_stream, num_prev, this->prev_embed, this->a_tmp, this->c_tmp);
                 this->fc2->prefill(calc_stream, num_prev, this->prev_hidden_state, this->a_tmp, this->c_tmp);
             } else {
@@ -342,7 +342,7 @@ struct MiniCPM4EagleImpl : Model {
             if (use_input_norm) {
                 this->input_norm1->prefill(calc_stream, topk_per_iter, this->model->embedding->output, nullptr);
                 this->input_norm2->prefill(calc_stream, topk_per_iter, this->fc1->output, nullptr);
-                if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T, true, true>>) {
+                if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T>>) {
                     this->fc1->prefill(calc_stream, topk_per_iter, this->input_norm1->output, this->a_tmp, this->c_tmp);
                     this->fc2->prefill(calc_stream, topk_per_iter, this->input_norm2->output, this->a_tmp, this->c_tmp);
                 } else {
@@ -350,7 +350,7 @@ struct MiniCPM4EagleImpl : Model {
                     this->fc2->prefill(calc_stream, topk_per_iter, this->input_norm2->output);
                 }
             } else {
-                if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T, true, true>>) {
+                if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T>>) {
                     this->fc2->prefill(calc_stream, topk_per_iter, this->fc1->output, this->a_tmp, this->c_tmp);
                     this->fc1->prefill(calc_stream, topk_per_iter, this->model->embedding->output, this->a_tmp, this->c_tmp);
                 } else {

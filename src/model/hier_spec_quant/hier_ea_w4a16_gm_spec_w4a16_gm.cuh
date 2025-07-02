@@ -17,7 +17,7 @@ struct HierEagleW4A16GMSpecW4A16GMImpl: Model {
 
     KVCacheManager<T>* ea_kv_caches;
     std::vector<Layer<T>*> ea_layers;
-    Linear<T, true, true> *ea_fc1;
+    Linear<T> *ea_fc1;
     Linear<T> *ea_fc2;
     functions::TopK<T>* ea_topk_func;
     functions::TopK<T>* ea_topk_func_2;
@@ -135,7 +135,7 @@ struct HierEagleW4A16GMSpecW4A16GMImpl: Model {
 
         // ea model
         ea_kv_caches = new KVCacheManager<T>(ea_num_layers, this->draft_model->num_key_value_heads, this->draft_model->head_dim);
-        ea_fc1 = new Linear<T, true, true>(this->draft_model->hidden_size, this->draft_model->hidden_size);
+        ea_fc1 = new Linear<T>(this->draft_model->hidden_size, this->draft_model->hidden_size, true, true);
         ea_fc2 = new Linear<T>(this->draft_model->hidden_size, this->draft_model->hidden_size);
         for (int i = 0; i < ea_num_layers; i++) {
             ea_layers.push_back(new Layer<T>(this->draft_model->hidden_size, this->draft_model->intermediate_size, this->draft_model->num_attention_heads, this->draft_model->num_key_value_heads, this->draft_model->head_dim, this->draft_model->rms_norm_eps));

@@ -258,7 +258,7 @@ struct EagleImpl : Model {
     ModelType* model;
     KVCacheManager<T>* kv_caches;
     std::vector<Layer<T>*> layers;
-    Linear<T, true, true> *fc1;
+    Linear<T> *fc1;
     Linear<T> *fc2;
     functions::TopK<T>* topk_func;
     functions::TopK<T>* topk_func_2;
@@ -298,7 +298,7 @@ struct EagleImpl : Model {
         this->total_tried = topk_per_iter * topk_per_iter * (num_iter - 1) + topk_per_iter;
 
         kv_caches = new KVCacheManager<T>(num_layers, num_key_value_heads, head_dim);
-        fc1 = new Linear<T, true, true>(this->model->hidden_size, this->model->hidden_size);
+        fc1 = new Linear<T>(this->model->hidden_size, this->model->hidden_size, true, true);
         fc2 = new Linear<T>(this->model->hidden_size, this->model->hidden_size);
         for (int i = 0; i < num_layers; i++) {
             layers.push_back(new Layer<T>(this->model->hidden_size, intermediate_size, num_attention_heads, num_key_value_heads, head_dim, rms_norm_eps));

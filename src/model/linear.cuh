@@ -5,11 +5,11 @@
 #include "../utils.cuh"
 #include "elementwise.cuh"
 
-template <typename T, bool transposed=true>
-void linear(const Stream& stream, int num_tokens, int dim_in, int dim_out, const T* input, const T* weight, T* output, bool inplace=false) {
+template <typename T>
+void linear(const Stream& stream, int num_tokens, int dim_in, int dim_out, const T* input, const T* weight, T* output, bool transposed=true, bool inplace=false) {
     float alpha = 1.0f;
     float beta = inplace ? 1.0f : 0.0f;
-    if constexpr (transposed) {
+    if (transposed) {
         cublasCheck(cublasGemmEx(stream.cublas_handle,
             CUBLAS_OP_T, CUBLAS_OP_N,
             dim_out, num_tokens, dim_in,
@@ -36,22 +36,26 @@ void linear(const Stream& stream, int num_tokens, int dim_in, int dim_out, const
     }
 }
 
-template <typename T, bool transposed=true, bool has_bias=false>
+template <typename T>
 struct Linear {
     int dim_in;
     int dim_out;
+    bool transposed;
+    bool has_bias;
     T* output;
     T* weight;
     T* bias;
 
-    Linear(int dim_in, int dim_out) {
+    Linear(int dim_in, int dim_out, bool transposed=true, bool has_bias=false) {
         this->dim_in = dim_in;
         this->dim_out = dim_out;
+        this->transposed = transposed;
+        this->has_bias = has_bias;
     }
 
     void init_weight_ptr(Memory* memory) {
         weight = (T*)memory->allocate_for_model(dim_in * dim_out * sizeof(T));
-        if constexpr (has_bias) {
+        if (has_bias) {
             bias = (T*)memory->allocate_for_model(dim_out * sizeof(T));
         }
     }
@@ -72,8 +76,8 @@ struct Linear {
 
     void prefill(const Stream& stream, int32_t num_tokens, T* input, T* tgt=nullptr, bool inplace=false) {
         if (tgt == nullptr) tgt = this->output;
-        linear<T, transposed>(stream, num_tokens, dim_in, dim_out, input, weight, tgt, inplace);
-        if constexpr (has_bias) {
+        linear<T>(stream, num_tokens, dim_in, dim_out, input, weight, tgt, transposed, inplace);
+        if (has_bias) {
             batched_add<T>(stream, num_tokens, dim_out, tgt, bias, tgt);
         }
     }
@@ -84,7 +88,7 @@ struct LMHead : Linear<T> {
     T* tmp_hidden_size;
     float head_scale;
 
-    LMHead(int dim_in, int dim_out, float head_scale = 1.0) : Linear<T>(dim_in, dim_out) {
+    LMHead(int dim_in, int dim_out, float head_scale = 1.0, bool transposed=true, bool has_bias=false) : Linear<T>(dim_in, dim_out, transposed, has_bias) {
         this->head_scale = head_scale;
     }
 
