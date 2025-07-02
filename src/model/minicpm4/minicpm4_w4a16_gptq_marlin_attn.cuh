@@ -40,7 +40,7 @@ struct MiniCPM4W4A16GPTQMarlinAttention {
         this->q_proj = new W4A16GPTQMarlinLinear<T>(hidden_size, num_attention_heads * head_dim, group_size);
         this->k_proj = new W4A16GPTQMarlinLinear<T>(hidden_size, num_key_value_heads * head_dim, group_size);
         this->v_proj = new W4A16GPTQMarlinLinear<T>(hidden_size, num_key_value_heads * head_dim, group_size);
-        this->o_proj = new W4A16GPTQMarlinLinear<T>(hidden_size, num_attention_heads * head_dim, group_size);
+        this->o_proj = new W4A16GPTQMarlinLinear<T>(num_attention_heads * head_dim, hidden_size, group_size);
 
         this->sink_window_size = sink_window_size;
         this->block_window_size = block_window_size;

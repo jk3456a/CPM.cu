@@ -37,7 +37,7 @@ struct MiniCPM4Attention {
         this->q_proj = new Linear<T>(hidden_size, num_attention_heads * head_dim);
         this->k_proj = new Linear<T>(hidden_size, num_key_value_heads * head_dim);
         this->v_proj = new Linear<T>(hidden_size, num_key_value_heads * head_dim);
-        this->o_proj = new Linear<T>(hidden_size, num_attention_heads * head_dim);
+        this->o_proj = new Linear<T>(num_attention_heads * head_dim, hidden_size);
 
         this->sink_window_size = sink_window_size;
         this->block_window_size = block_window_size;

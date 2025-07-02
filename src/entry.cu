@@ -113,7 +113,8 @@ void init_base_model(
     int chunk_length,
     float scale_embed,
     float scale_lmhead,
-    float scale_residual
+    float scale_residual,
+    bool use_qk_norm = false
 ) {
     init_resources();
 
@@ -131,7 +132,8 @@ void init_base_model(
             chunk_length,
             scale_embed,
             scale_lmhead,
-            scale_residual
+            scale_residual,
+            use_qk_norm
         );
     });
 
@@ -200,7 +202,8 @@ void init_w4a16_gptq_marlin_base_model(
     int chunk_length,
     float scale_embed,
     float scale_lmhead,
-    float scale_residual
+    float scale_residual,
+    bool use_qk_norm
 ) {
     init_resources();
 
@@ -219,7 +222,8 @@ void init_w4a16_gptq_marlin_base_model(
             chunk_length,
             scale_embed,
             scale_lmhead,
-            scale_residual
+            scale_residual,
+            use_qk_norm
         );
     });
 

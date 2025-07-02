@@ -489,7 +489,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "torch>=2.0.0",
-        "transformers==4.46.2",
+        "transformers>=4.46.2",
         "accelerate==0.26.0",
         "rich",
         "datasets",

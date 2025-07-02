@@ -41,7 +41,9 @@ def detect_model_type(model_path):
             arch = config.get('architectures', [''])[0].lower()
             model_type = config.get('model_type', '').lower()
             
-            if 'minicpm' in arch or 'minicpm' in model_type:
+            if 'qwen3' in arch or 'qwen3' in model_type:
+                return 'qwen3'
+            elif 'minicpm' in arch or 'minicpm' in model_type:
                 # Use architecture parameters to distinguish MiniCPM4 from MiniCPM
                 num_hidden_layers = config.get('num_hidden_layers', 0)
                 num_key_value_heads = config.get('num_key_value_heads', 0)
@@ -117,6 +119,7 @@ def create_model(model_path, draft_model_path, config):
             'chunk_length': config['chunk_length'],
             'cuda_graph': config['cuda_graph'],
             'apply_sparse': config.get('model_type') == 'minicpm4',
+            'use_qk_norm': config.get('model_type') == 'qwen3',
             'sink_window_size': config['sink_window_size'],
             'block_window_size': config['block_window_size'],
             'sparse_topk_k': config['sparse_topk_k'],

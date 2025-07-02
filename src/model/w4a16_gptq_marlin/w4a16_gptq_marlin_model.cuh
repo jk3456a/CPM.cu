@@ -41,7 +41,8 @@ struct W4A16GPTQMarlinModelImpl: Model {
         int chunk_length,
         float scale_embed = 1.0f,
         float scale_lmhead = 1.0f,
-        float scale_residual = 1.0f
+        float scale_residual = 1.0f,
+        bool use_qk_norm = false
     ) {
         this->vocab_size = vocab_size;
         this->num_hidden_layers = num_hidden_layers;
@@ -61,7 +62,7 @@ struct W4A16GPTQMarlinModelImpl: Model {
 
         embedding = new Embedding<T>(vocab_size, hidden_size, scale_embed);
         for (int i = 0; i < num_hidden_layers; i++) {
-            layers.push_back(new W4A16GPTQMarlinLayer<T>(hidden_size, intermediate_size, num_attention_heads, num_key_value_heads, head_dim, rms_norm_eps, group_size, residual_scale));
+            layers.push_back(new W4A16GPTQMarlinLayer<T>(hidden_size, intermediate_size, num_attention_heads, num_key_value_heads, head_dim, rms_norm_eps, group_size, residual_scale, 0, use_qk_norm));
         }
         norm = new RMSNorm<T>(hidden_size, rms_norm_eps);
         lm_head = new LMHead<T>(hidden_size, vocab_size, scale_lmhead);

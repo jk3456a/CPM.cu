@@ -69,17 +69,21 @@ struct Attention {
     Linear<T> *o_proj;
     T* output;
 
+    RMSNorm<T> *q_norm, *k_norm;
+    bool use_qk_norm;
+
     T* attn_output;
     float *softmax_lse, *softmax_lse_accum, *oaccum;
 
     int window_size;
 
-    Attention(int hidden_size, int num_attention_heads, int num_key_value_heads, int head_dim, float rms_norm_eps, int window_size = 0) {
+    Attention(int hidden_size, int num_attention_heads, int num_key_value_heads, int head_dim, float rms_norm_eps, int window_size = 0, bool use_qk_norm = false) {
         this->hidden_size = hidden_size;
         this->num_attention_heads = num_attention_heads;
         this->num_key_value_heads = num_key_value_heads;
         this->head_dim = head_dim;
         this->rms_norm_eps = rms_norm_eps;
+        this->use_qk_norm = use_qk_norm;
 
         this->attn_norm = new RMSNorm<T>(hidden_size, rms_norm_eps);
 
@@ -87,7 +91,15 @@ struct Attention {
         this->q_proj = new Linear<T>(hidden_size, num_attention_heads * head_dim);
         this->k_proj = new Linear<T>(hidden_size, num_key_value_heads * head_dim);
         this->v_proj = new Linear<T>(hidden_size, num_key_value_heads * head_dim);
-        this->o_proj = new Linear<T>(hidden_size, num_attention_heads * head_dim);
+        this->o_proj = new Linear<T>(num_attention_heads * head_dim, hidden_size);
+
+        if (use_qk_norm) {
+            this->q_norm = new RMSNorm<T>(head_dim, rms_norm_eps);
+            this->k_norm = new RMSNorm<T>(head_dim, rms_norm_eps);
+        } else {
+            this->q_norm = nullptr;
+            this->k_norm = nullptr;
+        }
 
         this->window_size = window_size;
     }
@@ -99,6 +111,11 @@ struct Attention {
         this->k_proj->weight = this->q_proj->weight + hidden_size * this->num_attention_heads * this->head_dim;
         this->v_proj->weight = this->k_proj->weight + hidden_size * this->num_key_value_heads * this->head_dim;
         this->o_proj->init_weight_ptr(memory);
+        
+        if (this->use_qk_norm) {
+            this->q_norm->init_weight_ptr(memory);
+            this->k_norm->init_weight_ptr(memory);
+        }
     }
 
     int64_t init_output_ptr(Memory* memory, int32_t num_tokens, int64_t offset) {
@@ -108,14 +125,20 @@ struct Attention {
         this->k_proj->output = this->q_proj->output + num_tokens * this->num_attention_heads * this->head_dim;
         this->v_proj->output = this->k_proj->output + num_tokens * this->num_key_value_heads * this->head_dim;
         
+        int64_t qk_norm_end = qkv_proj_end;
+        if (this->use_qk_norm) {
+            qk_norm_end = this->q_norm->init_output_ptr(memory, num_tokens * this->num_attention_heads, qkv_proj_end);
+            qk_norm_end = this->k_norm->init_output_ptr(memory, num_tokens * this->num_key_value_heads, qk_norm_end);
+        }
+        
         int64_t attn_output_end = memory->allocate((void**)&this->attn_output, offset, num_tokens * this->num_attention_heads * this->head_dim * sizeof(T));
-        int64_t softmax_lse_end = memory->allocate((void**)&this->softmax_lse, qkv_proj_end, num_tokens * this->num_attention_heads * sizeof(float));
+        int64_t softmax_lse_end = memory->allocate((void**)&this->softmax_lse, qk_norm_end, num_tokens * this->num_attention_heads * sizeof(float));
         const int max_num_splits = 128;  // Maximum number of splits for attention computation
         const int max_spec_tree_size = 64;  // Maximum size of speculative decoding tree
         int64_t softmax_lse_accum_end = memory->allocate((void**)&this->softmax_lse_accum, softmax_lse_end, max(max_num_splits * max_spec_tree_size, num_tokens) * this->num_attention_heads * sizeof(float));
         int64_t oaccum_end = memory->allocate((void**)&this->oaccum, softmax_lse_accum_end, max(max_num_splits * max_spec_tree_size, num_tokens) * this->num_attention_heads * this->head_dim * sizeof(float));
 
-        int64_t o_proj_end = this->o_proj->init_output_ptr(memory, num_tokens, qkv_proj_end);
+        int64_t o_proj_end = this->o_proj->init_output_ptr(memory, num_tokens, qk_norm_end);
         this->output = this->o_proj->output;
 
         return std::max(oaccum_end, o_proj_end);
@@ -132,6 +155,10 @@ struct Attention {
             this->v_proj->load_to_storage(name, ptr);
         } else if (name.find("o_proj") != std::string::npos) {
             this->o_proj->load_to_storage(name, ptr);
+        } else if (name.find("q_norm") != std::string::npos && this->use_qk_norm) {
+            this->q_norm->load_to_storage(name, ptr);
+        } else if (name.find("k_norm") != std::string::npos && this->use_qk_norm) {
+            this->k_norm->load_to_storage(name, ptr);
         } else if (name.find("input_layernorm") != std::string::npos) {
             this->attn_norm->load_to_storage(name, ptr);
         } else {
@@ -147,6 +174,12 @@ struct Attention {
         this->q_proj->prefill(stream, num_tokens, this->attn_norm->output);
         this->k_proj->prefill(stream, num_tokens, this->attn_norm->output, k_cache);
         this->v_proj->prefill(stream, num_tokens, this->attn_norm->output, v_cache);
+        
+        if (this->use_qk_norm) {
+            this->q_norm->prefill(stream, num_tokens * this->num_attention_heads, this->q_proj->output, nullptr, this->q_proj->output);
+            this->k_norm->prefill(stream, num_tokens * this->num_key_value_heads, k_cache, nullptr, k_cache);
+        }
+        
         kv_cache->rotary_embedding->prefill(stream, num_tokens, this->num_attention_heads, this->num_key_value_heads, this->q_proj->output, k_cache, position_ids);
 
         cuda_perf_start_on_stream_f(PREFILL_ATTN_CORE, stream.stream);
@@ -178,7 +211,6 @@ struct Attention {
         );
         cuda_perf_stop_on_stream_f(PREFILL_ATTN_CORE, stream.stream);
 
-        // flash attention and put output to attn_norm->output
         this->o_proj->prefill(stream, num_tokens, this->attn_output);
     }
 
@@ -194,6 +226,12 @@ struct Attention {
         q = this->qkv_proj->output;
         T* k = q + num_tokens * this->num_attention_heads * this->head_dim;
         T* v = k + num_tokens * this->num_key_value_heads * this->head_dim;
+        
+        if (this->use_qk_norm) {
+            this->q_norm->prefill(stream, num_tokens * this->num_attention_heads, q, nullptr, q);
+            this->k_norm->prefill(stream, num_tokens * this->num_key_value_heads, k, nullptr, k);
+        }
+        
         kv_cache->rotary_embedding->prefill(stream, num_tokens, this->num_attention_heads, this->num_key_value_heads, q, k, position_ids);
         copy_to_kvcache(stream, num_tokens, k, v, kv_cache, cache_length);
 
@@ -226,7 +264,6 @@ struct Attention {
         );
         cuda_perf_stop_on_stream_f(DECODE_ATTN_CORE, stream.stream);
 
-        // flash attention and put output to attn_norm->output
         this->o_proj->prefill(stream, num_tokens, this->attn_output);
     }
 };

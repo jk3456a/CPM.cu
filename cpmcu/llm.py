@@ -34,6 +34,7 @@ class LLM(torch.nn.Module):
                  sparse_topk_k: int = 32,
                  sparse_switch: int = 8192,
                  use_compress_lse: bool = False,
+                 use_qk_norm: bool = False,
                  temperature: float = 0.0,
                  random_seed: int = None,
     ):
@@ -56,8 +57,12 @@ class LLM(torch.nn.Module):
         else:
             self.generator = None
         
+        # For Qwen3, head_dim is explicitly specified in config and may not equal hidden_size // num_attention_heads
         if not hasattr(self.config, "head_dim"):
             self.config.head_dim = self.config.hidden_size // self.config.num_attention_heads
+        else:
+            # Qwen3 models have explicit head_dim that might be different
+            logger.info(f"Using explicit head_dim from config: {self.config.head_dim}")
         scale_embed = self.config.scale_emb if hasattr(self.config, "scale_emb") else 1.0
         scale_lmhead = (self.config.dim_model_base / self.config.hidden_size) if hasattr(self.config, "dim_model_base") else 1.0
         scale_residual = self.config.scale_depth / math.sqrt(self.config.num_hidden_layers) if hasattr(self.config, "scale_depth") else 1.0
@@ -100,6 +105,7 @@ class LLM(torch.nn.Module):
                 scale_embed,
                 scale_lmhead,
                 scale_residual,
+                use_qk_norm,
             )
 
         self.logits = torch.empty((64, self.config.vocab_size), dtype=self.dtype, device="cuda")
