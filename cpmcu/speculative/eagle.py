@@ -2,6 +2,7 @@ from .. import C
 from .tree_drafter import LLM_with_tree_drafter
 import math, torch
 from transformers import PretrainedConfig
+from ..common.logging import logger
 
 class EagleConfig(PretrainedConfig):
     def __init__(
@@ -34,6 +35,14 @@ class LLM_with_eagle(LLM_with_tree_drafter):
 
         self.eagle_path = eagle_path
         self.eagle_config = EagleConfig.from_pretrained(eagle_path)
+        
+        # For Qwen3, head_dim is explicitly specified in config and may not equal hidden_size // num_attention_heads
+        if not hasattr(self.eagle_config, "head_dim"):
+            self.eagle_config.head_dim = self.eagle_config.hidden_size // self.eagle_config.num_attention_heads
+        else:
+            # Qwen3 models have explicit head_dim that might be different
+            logger.info(f"Using explicit head_dim from eagle config: {self.eagle_config.head_dim}")
+        
         # Ensure presence consistency and equality for scale_depth, dim_model_base, and scale_emb
         for attr in ("scale_depth", "dim_model_base", "scale_emb"):
             base_has = hasattr(self.config, attr)
