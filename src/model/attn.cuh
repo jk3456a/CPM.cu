@@ -128,11 +128,13 @@ struct Attention {
     }
 
     int64_t init_output_ptr(Memory* memory, int32_t num_tokens, int64_t offset) {
+        const int32_t max_spec_tokens = std::max(num_tokens, 512);  // Safe upper bound for spec decoding
+        
         int64_t attn_norm_end = this->attn_norm->init_output_ptr(memory, num_tokens, offset);
-        int64_t qkv_proj_end = this->qkv_proj->init_output_ptr(memory, num_tokens, attn_norm_end);
+        int64_t qkv_proj_end = this->qkv_proj->init_output_ptr(memory, max_spec_tokens, attn_norm_end);
         this->q_proj->output = this->qkv_proj->output;
-        this->k_proj->output = this->q_proj->output + num_tokens * this->num_attention_heads * this->head_dim;
-        this->v_proj->output = this->k_proj->output + num_tokens * this->num_key_value_heads * this->head_dim;
+        this->k_proj->output = this->q_proj->output + max_spec_tokens * this->num_attention_heads * this->head_dim;
+        this->v_proj->output = this->k_proj->output + max_spec_tokens * this->num_key_value_heads * this->head_dim;
         
         int64_t qk_norm_end = qkv_proj_end;
         if (this->use_qk_norm) {
