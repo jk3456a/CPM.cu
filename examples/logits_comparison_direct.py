@@ -178,7 +178,7 @@ def run_generation_with_config(spec_num_iter: int, spec_tree_size: int, config_n
     args = parser.parse_args([
         "--model-path", "openbmb/MiniCPM4-8B-marlin-cpmcu",
         "--draft-model-path", "openbmb/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu",
-        "--frspec-path", "openbmb/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu",
+        # "--frspec-path", "openbmb/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu",
         "--prompt-file", "../prompt.txt",
         "--spec-num-iter", str(spec_num_iter),
         "--spec-topk-per-iter", str(topk_per_iter),  # Use calculated value
