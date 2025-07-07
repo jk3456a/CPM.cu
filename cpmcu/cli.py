@@ -72,7 +72,7 @@ def make_input(tokenizer, args):
         logger.info("Using raw prompt (chat template disabled)")
     
     # Show prompt with special characters escaped for better readability in logs
-    escaped_prompt = repr(prompt[:100])[1:-1]  # Remove outer quotes from repr()
+    escaped_prompt = repr(prompt[:100])  # Remove outer quotes from repr()
     logger.info(f"Input prompt: {escaped_prompt}{'...' if len(prompt) > 100 else ''}", escape=True)
     
     input_ids = tokenizer(prompt, return_tensors="pt")["input_ids"]
