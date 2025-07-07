@@ -71,9 +71,8 @@ void gptq_marlin_gemm(T* a, int32_t* b_q_weight,
   VALUE_CHECK(size_n % marlin::min_thread_n == 0, "size_n = ", size_n,
               ", is not divisible by min_thread_n = ", marlin::min_thread_n);
 
-  // int dev = a.get_device();
-  int dev = 0;  // 选择第一个 GPU（设备 0）
-  cudaSetDevice(dev);  // 设置当前 CUDA 设备
+  int dev;
+  cudaGetDevice(&dev);
   marlin::marlin_mm<T>(
       a, b_q_weight, c,
       c_tmp, b_scales,
