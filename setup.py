@@ -366,8 +366,8 @@ def get_sources_and_headers(dtype_set):
     # Get headers
     header_patterns = [
         "src/**/*.h", "src/**/*.hpp", "src/**/*.cuh",
+        "src/**/**/*.h", "src/**/**/*.hpp", "src/**/**/*.cuh",
         "src/cutlass/include/**/*.h", "src/cutlass/include/**/*.hpp",
-        "src/flash_attn/**/*.h", "src/flash_attn/**/*.hpp", "src/flash_attn/**/*.cuh",
     ]
     
     headers = []
