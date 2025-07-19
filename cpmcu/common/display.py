@@ -261,8 +261,10 @@ class Display:
                 ("prompt_file", "Prompt File", lambda x: bool(x)),
                 ("prompt_text", "Prompt Text", lambda x: bool(x)),
                 ("use_chat_template", "Use Chat Template", None),
+                ("dataset", "Dataset Type", None),
+                ("dataset_path", "Dataset Path", lambda x: x if x else "default"),
             ],
-            "condition": lambda args: any(hasattr(args, f) for f in ['prompt_file', 'prompt_text', 'use_chat_template'])
+            "condition": lambda args: any(hasattr(args, f) for f in ['prompt_file', 'prompt_text', 'use_chat_template', 'dataset'])
         },
         "Generation Configuration": {
             "color": "bright_cyan",

@@ -161,7 +161,7 @@ def patch_model_for_logits_capture(model, capture: LogitsCapture):
     return restore
 
 
-def run_generation_with_config(spec_num_iter: int, spec_tree_size: int, config_name: str, comparison_steps: int = 20):
+def run_generation_with_config(spec_num_iter: int, spec_tree_size: int, config_name: str, comparison_steps: int = 20, use_chat_template: bool = False):
     """Run generation with specific configuration and capture logits"""
     
     # Calculate appropriate topk_per_iter to satisfy constraint: topk_per_iter <= tree_size - 1
@@ -175,9 +175,13 @@ def run_generation_with_config(spec_num_iter: int, spec_tree_size: int, config_n
     
     # Parse arguments similar to test_generate.py
     parser = create_cli_parser()
-    args = parser.parse_args([
-        "--model-path", "openbmb/MiniCPM4-8B-marlin-cpmcu",
-        "--draft-model-path", "openbmb/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu",
+    
+    # Build argument list
+    args_list = [
+        # "--model-path", "openbmb/MiniCPM4-8B-marlin-cpmcu",
+        # "--draft-model-path", "openbmb/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu",
+        "--model-path", "unsloth/Meta-Llama-3.1-8B-Instruct",
+        "--draft-model-path", "jamesliu1/sglang-EAGLE-Llama-3.1-Instruct-8B",
         # "--frspec-path", "openbmb/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu",
         "--prompt-file", "../prompt.txt",
         "--spec-num-iter", str(spec_num_iter),
@@ -185,10 +189,18 @@ def run_generation_with_config(spec_num_iter: int, spec_tree_size: int, config_n
         "--spec-tree-size", str(spec_tree_size),
         "--num-generate", str(comparison_steps),  # Use comparison_steps for generation length
         "--minicpm4-yarn",
-        "--memory-limit", "0.45",  # Set very conservative memory limit to prevent OOM
+        "--memory-limit", "0.8",  # Set very conservative memory limit to prevent OOM
         "--chunk-length", "1024",  # Reduce chunk length to save memory
-        "--cuda-graph", "false"  # Disable CUDA graph to save memory
-    ])
+        "--cuda-graph", "false",  # Disable CUDA graph to save memory
+    ]
+    
+    # Add chat template argument based on parameter
+    if use_chat_template:
+        args_list.extend(["--use-chat-template", "true"])
+    else:
+        args_list.extend(["--use-chat-template", "false"])
+    
+    args = parser.parse_args(args_list)
     
     print(f"\n{'='*60}")
     print(f"Running {config_name}")
@@ -455,6 +467,72 @@ def compare_logits_data(capture1: LogitsCapture, capture2: LogitsCapture, compar
     print(f"\nDetailed comparison results saved to detailed_logits_comparison_results.json")
 
 
+# def main():
+#     """Main function"""
+    
+#     # Parse command line arguments for comparison configuration
+#     parser = argparse.ArgumentParser(description='Compare logits between different speculative decoding configurations')
+#     parser.add_argument('--comparison-steps', '--comparison_steps', type=int, default=20,
+#                        help='Number of tokens to compare between configurations (default: 20)')
+#     parser.add_argument('--config1-iter', type=int, default=5,
+#                        help='spec_num_iter for configuration 1 (default: 5)')
+#     parser.add_argument('--config1-tree-size', type=int, default=32,
+#                        help='spec_tree_size for configuration 1 (default: 32)')
+#     parser.add_argument('--config2-iter', type=int, default=2,
+#                        help='spec_num_iter for configuration 2 (default: 2)')
+#     parser.add_argument('--config2-tree-size', type=int, default=12,
+#                        help='spec_tree_size for configuration 2 (default: 12)')
+    
+#     # Parse only known args to avoid conflicts with other argument parsing in the script
+#     comparison_args, _ = parser.parse_known_args()
+    
+#     comparison_steps = comparison_args.comparison_steps
+#     config1_iter = comparison_args.config1_iter
+#     config1_tree_size = comparison_args.config1_tree_size
+#     config2_iter = comparison_args.config2_iter
+#     config2_tree_size = comparison_args.config2_tree_size
+    
+#     print(f"🚀 Starting Direct Logits Comparison...")
+#     print(f"📊 Comparison settings: {comparison_steps} tokens per configuration")
+    
+#     # Configuration 1
+#     print(f"\n" + "="*60)
+#     print(f"CONFIGURATION 1: spec_num_iter={config1_iter}, spec_tree_size={config1_tree_size}")
+#     print("="*60)
+    
+#     capture1 = run_generation_with_config(config1_iter, config1_tree_size, 
+#                                          f"config1_iter{config1_iter}_tree{config1_tree_size}", 
+#                                          comparison_steps)
+    
+#     # Clear memory between configurations
+#     torch.cuda.empty_cache()
+#     print(f"\n📄 Memory cleared after Configuration 1")
+    
+#     # Configuration 2
+#     print(f"\n" + "="*60)
+#     print(f"CONFIGURATION 2: spec_num_iter={config2_iter}, spec_tree_size={config2_tree_size}")  
+#     print("="*60)
+    
+#     capture2 = run_generation_with_config(config2_iter, config2_tree_size, 
+#                                          f"config2_iter{config2_iter}_tree{config2_tree_size}", 
+#                                          comparison_steps)
+    
+#     # Compare the results
+#     if capture1 and capture2:
+#         compare_logits_data(capture1, capture2, comparison_steps)
+#     else:
+#         print("⚠️  One or both configurations failed to run successfully.")
+#         if capture1:
+#             print(f"✅ Configuration 1 completed successfully with {len(capture1.captured_logits)} steps")
+#         else:
+#             print("❌ Configuration 1 failed")
+#         if capture2:
+#             print(f"✅ Configuration 2 completed successfully with {len(capture2.captured_logits)} steps")
+#         else:
+#             print("❌ Configuration 2 failed")
+    
+#     print(f"\n✅ Direct logits comparison completed!")
+
 def main():
     """Main function"""
     
@@ -466,10 +544,9 @@ def main():
                        help='spec_num_iter for configuration 1 (default: 5)')
     parser.add_argument('--config1-tree-size', type=int, default=32,
                        help='spec_tree_size for configuration 1 (default: 32)')
-    parser.add_argument('--config2-iter', type=int, default=2,
-                       help='spec_num_iter for configuration 2 (default: 2)')
-    parser.add_argument('--config2-tree-size', type=int, default=12,
-                       help='spec_tree_size for configuration 2 (default: 12)')
+    parser.add_argument('--use-chat-template', action='store_true', default=False,
+                       help='Use chat template for prompt formatting (default: False)')
+
     
     # Parse only known args to avoid conflicts with other argument parsing in the script
     comparison_args, _ = parser.parse_known_args()
@@ -477,11 +554,11 @@ def main():
     comparison_steps = comparison_args.comparison_steps
     config1_iter = comparison_args.config1_iter
     config1_tree_size = comparison_args.config1_tree_size
-    config2_iter = comparison_args.config2_iter
-    config2_tree_size = comparison_args.config2_tree_size
+    use_chat_template = comparison_args.use_chat_template
     
     print(f"🚀 Starting Direct Logits Comparison...")
     print(f"📊 Comparison settings: {comparison_steps} tokens per configuration")
+    print(f"📝 Chat template: {'Enabled' if use_chat_template else 'Disabled'}")
     
     # Configuration 1
     print(f"\n" + "="*60)
@@ -490,37 +567,12 @@ def main():
     
     capture1 = run_generation_with_config(config1_iter, config1_tree_size, 
                                          f"config1_iter{config1_iter}_tree{config1_tree_size}", 
-                                         comparison_steps)
+                                         comparison_steps, use_chat_template)
     
     # Clear memory between configurations
     torch.cuda.empty_cache()
     print(f"\n📄 Memory cleared after Configuration 1")
     
-    # Configuration 2
-    print(f"\n" + "="*60)
-    print(f"CONFIGURATION 2: spec_num_iter={config2_iter}, spec_tree_size={config2_tree_size}")  
-    print("="*60)
-    
-    capture2 = run_generation_with_config(config2_iter, config2_tree_size, 
-                                         f"config2_iter{config2_iter}_tree{config2_tree_size}", 
-                                         comparison_steps)
-    
-    # Compare the results
-    if capture1 and capture2:
-        compare_logits_data(capture1, capture2, comparison_steps)
-    else:
-        print("⚠️  One or both configurations failed to run successfully.")
-        if capture1:
-            print(f"✅ Configuration 1 completed successfully with {len(capture1.captured_logits)} steps")
-        else:
-            print("❌ Configuration 1 failed")
-        if capture2:
-            print(f"✅ Configuration 2 completed successfully with {len(capture2.captured_logits)} steps")
-        else:
-            print("❌ Configuration 2 failed")
-    
-    print(f"\n✅ Direct logits comparison completed!")
-
 
 if __name__ == "__main__":
     main() 
