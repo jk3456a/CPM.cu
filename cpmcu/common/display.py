@@ -114,6 +114,33 @@ class Display:
         
         self._render_summary_table(rows, "Performance Summary", "green", show_units=True)
     
+    def render_dataset_summary(self, dataset_type, model_name, total_questions, successful_questions, success_rate, summary_stats):
+        """Render dataset evaluation summary"""
+        rows = []
+        
+        # Basic information
+        rows.append(("Dataset Type", dataset_type, ""))
+        rows.append(("Model Name", model_name, ""))
+        rows.append(("Total Questions", str(total_questions), ""))
+        rows.append(("Successful Questions", str(successful_questions), ""))
+        rows.append(("Success Rate", f"{success_rate:.1%}", ""))
+        
+        # Performance statistics
+        if 'total_time' in summary_stats:
+            rows.append(("Total Time", f"{summary_stats['total_time']:.2f}", "s"))
+        if 'avg_time_per_question' in summary_stats:
+            rows.append(("Avg Time per Question", f"{summary_stats['avg_time_per_question']:.2f}", "s"))
+        if 'total_output_tokens' in summary_stats:
+            rows.append(("Total Output Tokens", str(summary_stats['total_output_tokens']), ""))
+        if 'avg_tokens_per_question' in summary_stats:
+            rows.append(("Avg Tokens per Question", f"{summary_stats['avg_tokens_per_question']:.1f}", ""))
+        if 'mean_accept_length' in summary_stats:
+            rows.append(("Mean Accept Length", f"{summary_stats['mean_accept_length']:.2f}", ""))
+        if 'throughput_tokens_per_sec' in summary_stats:
+            rows.append(("Throughput", f"{summary_stats['throughput_tokens_per_sec']:.1f}", "tokens/s"))
+        
+        self._render_summary_table(rows, "Dataset Evaluation Summary", "green", show_units=True)
+    
     def create_stream(self, title="Generated Response"):
         """Create streaming text display"""
         return DisplayStream(self, title)
