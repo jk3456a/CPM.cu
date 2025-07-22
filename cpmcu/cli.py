@@ -52,7 +52,20 @@ def make_input(tokenizer, args, question_text=None):
     
     # 优先使用传入的question_text（用于数据集评估）
     if question_text is not None:
-        prompt_content = question_text
+        # 处理多轮对话的情况
+        if isinstance(question_text, list):
+            # question_text是一个包含多轮对话的列表
+            messages = []
+            for j, turn in enumerate(question_text):
+                # 每个turn都是用户的输入
+                messages.append({"role": "user", "content": turn})
+                # 除了最后一轮，每轮后都需要添加一个assistant占位符
+                if j < len(question_text) - 1:
+                    messages.append({"role": "assistant", "content": "[Response to be generated]"})
+            prompt_content = messages
+        else:
+            # 单轮对话
+            prompt_content = question_text
     elif args.prompt_file:
         if not os.path.exists(args.prompt_file):
             raise FileNotFoundError(f"Prompt file not found: {args.prompt_file}")
@@ -66,16 +79,33 @@ def make_input(tokenizer, args, question_text=None):
     # Apply chat template if enabled (default: True)
     if getattr(args, 'use_chat_template', True):
         try:
-            prompt = tokenizer.apply_chat_template(
-                [{"role": "user", "content": prompt_content}], 
-                tokenize=False, 
-                add_generation_prompt=True
-            )
+            if isinstance(prompt_content, list):
+                # 如果是多轮对话消息列表，直接使用
+                prompt = tokenizer.apply_chat_template(
+                    prompt_content,
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
+            else:
+                # 单轮对话
+                prompt = tokenizer.apply_chat_template(
+                    [{"role": "user", "content": prompt_content}], 
+                    tokenize=False, 
+                    add_generation_prompt=True
+                )
         except Exception as e:
             logger.warning(f"Failed to apply chat template: {e}, using raw prompt")
-            prompt = prompt_content
+            if isinstance(prompt_content, list):
+                # 如果是消息列表，提取最后一个用户消息
+                prompt = prompt_content[-1]['content'] if prompt_content else ""
+            else:
+                prompt = prompt_content
     else:
-        prompt = prompt_content
+        if isinstance(prompt_content, list):
+            # 如果是消息列表，提取最后一个用户消息
+            prompt = prompt_content[-1]['content'] if prompt_content else ""
+        else:
+            prompt = prompt_content
         if question_text is None:  # 只在非数据集模式下显示prompt
             logger.info("Using raw prompt (chat template disabled)")
     
@@ -360,59 +390,114 @@ def run_dataset_evaluation(args):
         question_id = question_item['id']
         question_text = question_item['question']
         category = question_item['category']
+        turns = question_item.get('turns', [])
         
         logger.info(f"Processing question {i}/{total_questions} (ID: {question_id})")
         
         try:
-            # Prepare input
-            input_ids = make_input(tokenizer, args, question_text)
+            # 初始化多轮对话的数据
+            messages = []
+            turn_responses = []
+            turn_timings = []
+            all_accept_lengths = []
             
-            # Generate response
-            start_time = time.time()
+            # 确保至少有一个turn
+            if not turns:
+                turns = [question_text]
             
-            generation_results = llm.generate(
-                input_ids=input_ids.view(-1),
-                generation_length=config['num_generate'],
-                teminators=terminators,
-                use_stream=False
-            )
-            
-            # Extract results - handle different return types safely
-            if isinstance(generation_results, tuple):
-                if has_speculative and len(generation_results) == 4:
-                    tokens, accept_lengths, decode_time, prefill_time = generation_results
-                elif len(generation_results) >= 3:
-                    tokens, decode_time, prefill_time = generation_results[:3]
-                    accept_lengths = generation_results[1] if has_speculative and len(generation_results) > 3 else None
+            # 逐轮处理对话
+            for j, turn in enumerate(turns):
+                logger.info(f"  Turn {j+1}/{len(turns)}")
+                
+                # 添加用户消息
+                messages.append({"role": "user", "content": turn})
+                
+                # 准备输入
+                if getattr(args, 'use_chat_template', True):
+                    prompt = tokenizer.apply_chat_template(
+                        messages,
+                        tokenize=False,
+                        add_generation_prompt=True
+                    )
+                    input_ids = tokenizer(prompt, return_tensors="pt")["input_ids"].to("cuda", dtype=torch.int32)
                 else:
-                    raise ValueError(f"Unexpected generation results format: {len(generation_results)} elements")
-            else:
-                # Handle generator case - should not happen in non-stream mode
-                raise ValueError("Unexpected generator return in non-stream mode")
-            
-            # Decode response
-            generated_text = tokenizer.decode(tokens, skip_special_tokens=True)
-            total_time = time.time() - start_time
-            
-            # Store result
-            result = {
-                'id': question_id,
-                'question': question_text,
-                'response': generated_text,
-                'category': category,
-                'timing': {
+                    # 不使用chat template时，只使用当前turn
+                    input_ids = tokenizer(turn, return_tensors="pt")["input_ids"].to("cuda", dtype=torch.int32)
+                
+                # 生成回答
+                turn_start_time = time.time()
+                
+                generation_results = llm.generate(
+                    input_ids=input_ids.view(-1),
+                    generation_length=config['num_generate'],
+                    teminators=terminators,
+                    use_stream=False
+                )
+                
+                # 提取结果
+                if isinstance(generation_results, tuple):
+                    if has_speculative and len(generation_results) == 4:
+                        tokens, accept_lengths, decode_time, prefill_time = generation_results
+                    elif len(generation_results) >= 3:
+                        tokens, decode_time, prefill_time = generation_results[:3]
+                        accept_lengths = generation_results[1] if has_speculative and len(generation_results) > 3 else None
+                    else:
+                        raise ValueError(f"Unexpected generation results format: {len(generation_results)} elements")
+                else:
+                    raise ValueError("Unexpected generator return in non-stream mode")
+                
+                # 解码生成的tokens
+                generated_text = tokenizer.decode(tokens, skip_special_tokens=True)
+                turn_total_time = time.time() - turn_start_time
+                
+                # 记录这一轮的结果
+                turn_responses.append(generated_text)
+                turn_timings.append({
                     'prefill_time': prefill_time,
                     'decode_time': decode_time,
-                    'total_time': total_time
-                },
-                'tokens': {
+                    'total_time': turn_total_time,
                     'input_length': len(input_ids.view(-1)),
                     'output_length': len(tokens)
+                })
+                
+                if accept_lengths:
+                    all_accept_lengths.extend(accept_lengths)
+                
+                # 将生成的回答添加到messages中，作为下一轮的上下文
+                messages.append({"role": "assistant", "content": generated_text})
+                
+                logger.info(f"    ✓ Turn {j+1} completed in {turn_total_time:.2f}s")
+            
+            # 汇总所有轮次的统计数据
+            total_time = sum(t['total_time'] for t in turn_timings)
+            total_input_tokens = sum(t['input_length'] for t in turn_timings)
+            total_output_tokens = sum(t['output_length'] for t in turn_timings)
+            
+            # 存储结果
+            result = {
+                'id': question_id,
+                'question': question_text,  # 保留原始第一个问题
+                'turns': turns,  # 所有轮次的问题
+                'responses': turn_responses,  # 每轮的回答
+                'category': category,
+                'timing': {
+                    'prefill_time': sum(t['prefill_time'] for t in turn_timings),
+                    'decode_time': sum(t['decode_time'] for t in turn_timings),
+                    'total_time': total_time,
+                    'turn_timings': turn_timings  # 每轮的详细时间
+                },
+                'tokens': {
+                    'input_length': total_input_tokens,
+                    'output_length': total_output_tokens,
+                    'turn_tokens': [(t['input_length'], t['output_length']) for t in turn_timings]
                 }
             }
             
-            if accept_lengths:
-                result['accept_lengths'] = accept_lengths
+            if all_accept_lengths:
+                result['accept_lengths'] = all_accept_lengths
+                # 计算当前问题的mean accept length
+                mean_accept_length = sum(all_accept_lengths) / len(all_accept_lengths)
+                result['mean_accept_length'] = round(mean_accept_length, 2)
             
             results.append(result)
             
