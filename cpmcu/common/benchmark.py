@@ -58,16 +58,15 @@ def load_dataset(dataset_type: str, dataset_path: Optional[str] = None) -> Tuple
     questions = []
     
     if dataset_type in ["mtbench", "specbench"]:
-        # MTBench/SpecBench format: use both turns for two-round conversation
+        # MTBench/SpecBench format: preserve all turns for multi-turn conversations
         for data in raw_questions:
             turns = data.get('turns', [])
             if len(turns) >= 1:
                 questions.append({
                     'id': data.get('question_id', len(questions)),
-                    'question': turns[0],  # First turn
-                    'follow_up': turns[1] if len(turns) > 1 else None,  # Second turn (optional)
+                    'question': turns[0],  # First turn (for backward compatibility)
                     'category': data.get('category', 'general'),
-                    'turns': turns  # Keep original turns for reference
+                    'turns': turns  # Keep all turns for multi-turn support
                 })
     
     elif dataset_type == "gsm8k":
@@ -80,7 +79,7 @@ def load_dataset(dataset_type: str, dataset_path: Optional[str] = None) -> Tuple
                     'question': turns[0],
                     'category': data.get('category', 'math_reasoning'),
                     'reference': data.get('reference', []),
-                    'turns': turns
+                    'turns': turns  # Keep turns even for single-turn
                 })
     
     else:
@@ -103,7 +102,7 @@ def load_dataset(dataset_type: str, dataset_path: Optional[str] = None) -> Tuple
                     'id': data.get('question_id') or data.get('id', len(questions)),
                     'question': question_text,
                     'category': data.get('category', 'general'),
-                    'turns': turns
+                    'turns': turns if turns else [question_text]  # Ensure turns always exists
                 })
     
     question_count = len(questions)
@@ -127,6 +126,26 @@ def save_results(results: List[Dict[str, Any]], output_dir: str,
     total_time = sum(r.get('timing', {}).get('total_time', 0) for r in results if not r.get('error', False))
     total_tokens = sum(r.get('tokens', {}).get('output_length', 0) for r in results if not r.get('error', False))
     
+    # Calculate mean accept length for speculative decoding
+    all_accept_lengths = []
+    for r in results:
+        if 'accept_lengths' in r and r['accept_lengths']:
+            all_accept_lengths.extend(r['accept_lengths'])
+    
+    summary_stats = {
+        'total_time': round(total_time, 2),
+        'avg_time_per_question': round(total_time / successful, 2) if successful > 0 else 0,
+        'total_output_tokens': total_tokens,
+        'avg_tokens_per_question': round(total_tokens / successful, 2) if successful > 0 else 0,
+        'throughput_tokens_per_sec': round(total_tokens / total_time, 2) if total_time > 0 else 0
+    }
+    
+    # Add mean accept length if available
+    if all_accept_lengths:
+        mean_accept_length = sum(all_accept_lengths) / len(all_accept_lengths)
+        summary_stats['mean_accept_length'] = round(mean_accept_length, 2)
+        logger.info(f"Mean accepted tokens: {mean_accept_length:.2f}")
+    
     output_data = {
         'dataset_type': dataset_type,
         'model_name': model_name,
@@ -134,13 +153,7 @@ def save_results(results: List[Dict[str, Any]], output_dir: str,
         'total_questions': len(results),
         'successful_questions': successful,
         'success_rate': successful / len(results) if results else 0,
-        'summary_stats': {
-            'total_time': round(total_time, 2),
-            'avg_time_per_question': round(total_time / successful, 2) if successful > 0 else 0,
-            'total_output_tokens': total_tokens,
-            'avg_tokens_per_question': round(total_tokens / successful, 2) if successful > 0 else 0,
-            'throughput_tokens_per_sec': round(total_tokens / total_time, 2) if total_time > 0 else 0
-        },
+        'summary_stats': summary_stats,
         'results': results
     }
     
@@ -148,8 +161,18 @@ def save_results(results: List[Dict[str, Any]], output_dir: str,
         json.dump(output_data, f, indent=2, ensure_ascii=False)
     
     logger.success(f"Results saved to: {filepath}")
-    logger.info(f"Summary: {successful}/{len(results)} questions successful, "
-                f"{output_data['summary_stats']['throughput_tokens_per_sec']:.2f} tokens/s")
+    
+    # Build summary message
+    summary_parts = [
+        f"{successful}/{len(results)} questions successful",
+        f"{output_data['summary_stats']['throughput_tokens_per_sec']:.2f} tokens/s"
+    ]
+    
+    # Add mean accept length to summary if available
+    if 'mean_accept_length' in summary_stats:
+        summary_parts.append(f"mean accept length: {summary_stats['mean_accept_length']:.2f}")
+    
+    logger.info(f"Summary: {', '.join(summary_parts)}")
     
     return filepath
 

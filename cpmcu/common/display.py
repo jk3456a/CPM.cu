@@ -105,6 +105,9 @@ class Display:
         if 'accept_lengths' in stats and stats['accept_lengths']:
             mean_accept = sum(stats['accept_lengths']) / len(stats['accept_lengths'])
             rows.append(("Mean Accept Length", f"{mean_accept:.2f}", "tokens"))
+            # Show full accept lengths list
+            accept_lengths_str = ", ".join(str(x) for x in stats['accept_lengths'])
+            rows.append(("Accept Lengths", f"[{accept_lengths_str}]", ""))
         
         if 'decode_length' in stats:
             rows.append(("Decode Length", f"{stats['decode_length']}", "tokens"))
