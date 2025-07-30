@@ -47,7 +47,37 @@ struct Embedding {
     }
 
     void prefill(const Stream& stream, int32_t num_tokens, int32_t* input) {
+        int32_t* h_input = new int32_t[num_tokens];
+        cudaMemcpy(h_input, input, num_tokens * sizeof(int32_t), cudaMemcpyDeviceToHost);
+        for (int i = 0; i < num_tokens; i++) {
+            printf("embedding->prefill input[%d] = %d\n", i, h_input[i]);
+        }
+        delete[] h_input;
+        //查表 查weight表
         embedding(stream, num_tokens, this->hidden_size, input, this->weight, this->output);
+        
+        // 添加调试信息：显示数据类型信息
+        printf("=== Embedding Debug Info ===\n");
+        printf("sizeof(T) = %zu bytes\n", sizeof(T));
+        printf("num_tokens = %d, hidden_size = %d\n", num_tokens, this->hidden_size);
+        printf("Total elements = %d\n", num_tokens * this->hidden_size);
+        printf("Total memory = %zu bytes\n", num_tokens * this->hidden_size * sizeof(T));
+        
+        // 修复：使用正确的数据类型T而不是假设是float
+        T* h_output = new T[num_tokens * this->hidden_size];
+        cudaMemcpy(h_output, this->output, num_tokens * this->hidden_size * sizeof(T), cudaMemcpyDeviceToHost);
+        
+        printf("=== Embedding Output Values ===\n");
+        for (int i = 0; i < num_tokens; i++) {
+            for (int j = 0; j < 10; j++) {
+                // 将T类型转换为float进行输出
+                printf("embedding->prefill output[%d][%d] = %f\n", i, j, (float)h_output[i * this->hidden_size + j]);
+            }
+        }
+        printf("=============================\n");
+        
+        delete[] h_output;
+        
         elementwise_scale(stream, num_tokens, this->hidden_size, this->output, this->embed_scale);
     }
 };

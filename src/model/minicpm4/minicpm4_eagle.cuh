@@ -133,6 +133,7 @@ struct MiniCPM4EagleImpl : Model {
 
     ModelType* model = nullptr;
     KVCacheManager<T>* kv_caches = nullptr;
+    Embedding<T>* embedding;
     std::vector<LayerType*> layers;
     Fc1Type *fc1 = nullptr;
     Fc2Type *fc2 = nullptr;
@@ -234,6 +235,9 @@ struct MiniCPM4EagleImpl : Model {
         // Initialize logits debugging hook
         std::string hook_name = "iter" + std::to_string(num_iter) + "_tree" + std::to_string(tree_size);
         logits_hook = new LogitsHook<T>(hook_name);
+
+        //FIX eagle掉点
+        embedding = new Embedding<T>(this->model->vocab_size, this->model->hidden_size, 1.0f);
     }
 
     void init_weight_ptr(Memory* memory) {
@@ -477,6 +481,36 @@ struct MiniCPM4EagleImpl : Model {
             }
             
             this->topk_func->prefill(calc_stream, 1, this->eagle_logits);
+            
+            // 输出第一轮topk结果 (d=0) - 调试信息
+            printf("=== Draft Layer 0 - First TopK (d=0) ===\n");
+            cudaDeviceSynchronize();
+            
+            // 输出第一轮topk结果
+            int32_t* h_topk_pos_d0 = new int32_t[topk_per_iter];
+            T* h_topk_val_d0 = new T[topk_per_iter];
+            cudaMemcpy(h_topk_pos_d0, this->topk_func->topk_pos, topk_per_iter * sizeof(int32_t), cudaMemcpyDeviceToHost);
+            cudaMemcpy(h_topk_val_d0, this->topk_func->topk_val, topk_per_iter * sizeof(T), cudaMemcpyDeviceToHost);
+            
+            printf("topk_index tensor([");
+            for (int k = 0; k < topk_per_iter; k++) {
+                printf("%d", h_topk_pos_d0[k]);
+                if (k < topk_per_iter - 1) printf(", ");
+            }
+            printf("], device='cuda:0')\n");
+            
+            printf("topk_p tensor([");
+            for (int k = 0; k < topk_per_iter; k++) {
+                printf("%.4f", (float)h_topk_val_d0[k]);
+                if (k < topk_per_iter - 1) printf(", ");
+            }
+            printf("], device='cuda:0', dtype=torch.float16)\n");
+            printf("topk_index.shape torch.Size([%d])\n", topk_per_iter);
+            printf("topk_p.shape torch.Size([%d])\n", topk_per_iter);
+            
+            delete[] h_topk_pos_d0;
+            delete[] h_topk_val_d0;
+            
             cudaMemcpy(this->tried_history_val, this->topk_func->topk_val, topk_per_iter * sizeof(T), cudaMemcpyDeviceToDevice);
             cudaMemcpy(this->tried_history_pos, this->topk_func->topk_pos, topk_per_iter * sizeof(int32_t), cudaMemcpyDeviceToDevice);
             if (this->frspec_vocab_size != this->model->vocab_size) {
@@ -531,6 +565,40 @@ struct MiniCPM4EagleImpl : Model {
             }
             
             this->topk_func->prefill(calc_stream, topk_per_iter, this->eagle_logits);
+            
+            // 输出每轮topk结果 (d>=1) - 调试信息
+            printf("=== Draft Layer %d - TopK (d=%d) ===\n", d, d);
+            cudaDeviceSynchronize();
+            
+            // 输出本轮的topk结果 (topk_per_iter * topk_per_iter个候选)
+            int total_candidates = topk_per_iter * topk_per_iter;
+            int32_t* h_topk_pos_d = new int32_t[total_candidates];
+            T* h_topk_val_d = new T[total_candidates];
+            cudaMemcpy(h_topk_pos_d, this->topk_func->topk_pos, total_candidates * sizeof(int32_t), cudaMemcpyDeviceToHost);
+            cudaMemcpy(h_topk_val_d, this->topk_func->topk_val, total_candidates * sizeof(T), cudaMemcpyDeviceToHost);
+            
+            printf("Generated %d candidates (topk_per_iter=%d * topk_per_iter=%d):\n", total_candidates, topk_per_iter, topk_per_iter);
+            printf("topk_index tensor([");
+            for (int k = 0; k < min(16, total_candidates); k++) {  // 只显示前16个避免输出过长
+                printf("%d", h_topk_pos_d[k]);
+                if (k < min(16, total_candidates) - 1) printf(", ");
+            }
+            if (total_candidates > 16) printf(", ...");
+            printf("], device='cuda:0')\n");
+            
+            printf("topk_p tensor([");
+            for (int k = 0; k < min(16, total_candidates); k++) {
+                printf("%.4f", (float)h_topk_val_d[k]);
+                if (k < min(16, total_candidates) - 1) printf(", ");
+            }
+            if (total_candidates > 16) printf(", ...");
+            printf("], device='cuda:0', dtype=torch.float16)\n");
+            printf("topk_index.shape torch.Size([%d, %d])\n", topk_per_iter, topk_per_iter);
+            printf("topk_p.shape torch.Size([%d, %d])\n", topk_per_iter, topk_per_iter);
+            
+            delete[] h_topk_pos_d;
+            delete[] h_topk_val_d;
+            
             cumsum(calc_stream, topk_per_iter, topk_per_iter, this->topk_func->topk_val, this->topk_func_2->topk_val);
             cudaMemcpy(this->tried_history_val + topk_per_iter + (d - 1) * topk_per_iter * topk_per_iter, this->topk_func->topk_val, topk_per_iter * topk_per_iter * sizeof(T), cudaMemcpyDeviceToDevice);
             cudaMemcpy(this->tried_history_pos + topk_per_iter + (d - 1) * topk_per_iter * topk_per_iter, this->topk_func->topk_pos, topk_per_iter * topk_per_iter * sizeof(int32_t), cudaMemcpyDeviceToDevice);
@@ -561,6 +629,39 @@ struct MiniCPM4EagleImpl : Model {
         int candidates_to_select = min(valid_tried_count, this->tree_size - 1);
         
         this->topk_func_2->prefill(calc_stream, 1, this->tried_history_val, valid_tried_count, candidates_to_select);
+
+        // 输出第二轮topk结果 (最终选择) - 调试信息
+        printf("=== Final TopK Selection (Second Round) ===\n");
+        cudaDeviceSynchronize();
+        
+        printf("Total valid candidates: %d\n", valid_tried_count);
+        printf("Selecting top %d candidates for tree construction\n", candidates_to_select);
+        
+        // 输出最终选择的topk结果
+        int32_t* h_final_pos = new int32_t[candidates_to_select];
+        T* h_final_val = new T[candidates_to_select];
+        cudaMemcpy(h_final_pos, this->topk_func_2->topk_pos, candidates_to_select * sizeof(int32_t), cudaMemcpyDeviceToHost);
+        cudaMemcpy(h_final_val, this->topk_func_2->topk_val, candidates_to_select * sizeof(T), cudaMemcpyDeviceToHost);
+        
+        printf("Final selected indices (topk_cs_index): [");
+        for (int k = 0; k < candidates_to_select; k++) {
+            printf("%d", h_final_pos[k]);
+            if (k < candidates_to_select - 1) printf(", ");
+        }
+        printf("]\n");
+        
+        printf("Final selected values (topk_cs_p): [");
+        for (int k = 0; k < candidates_to_select; k++) {
+            printf("%.4f", (float)h_final_val[k]);
+            if (k < candidates_to_select - 1) printf(", ");
+        }
+        printf("]\n");
+        printf("topk_cs_index.shape torch.Size([%d])\n", candidates_to_select);
+        printf("topk_cs_p.shape torch.Size([%d])\n", candidates_to_select);
+        printf("===============================\n");
+        
+        delete[] h_final_pos;
+        delete[] h_final_val;
 
         // build tree
         build_dynamic_tree(calc_stream, candidates_to_select + 1, this->eagle_original_length[0], this->topk_per_iter, this->tried_history_parent, this->topk_func_2->topk_pos, tree_position_ids, tree_attn_mask, tree_parent);

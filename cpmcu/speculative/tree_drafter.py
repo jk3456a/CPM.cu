@@ -24,6 +24,38 @@ def pack_mask(mask_2d):
     mask_2d_packed = mask_2d_packed.view(torch.int64).view(-1)
     return mask_2d_packed
 
+def print_tree_structure(tree_draft_ids, tree_parent, step_info=""):
+    """打印生成树的详细结构信息，包括节点ID、父节点和深度，按深度和父节点排序"""
+    tree_size = len(tree_draft_ids)
+    
+    # 计算每个节点的深度
+    depths = [0] * tree_size
+    for i in range(1, tree_size):
+        parent_idx = tree_parent[i]
+        depths[i] = depths[parent_idx] + 1
+    
+    # 创建节点信息列表，包含索引、token_id、父节点、深度
+    nodes = []
+    for i in range(tree_size):
+        token_id = tree_draft_ids[i]
+        parent_id = tree_parent[i] if i > 0 else -1  # 根节点没有父节点
+        depth = depths[i]
+        nodes.append((i, token_id, parent_id, depth))
+    
+    # 按深度排序，同一深度内按父节点排序
+    nodes.sort(key=lambda x: (x[3], x[2], x[0]))  # (深度, 父节点, 原始索引)
+    
+    print(f"=== 生成树结构详情 {step_info} ===")
+    print("节点  | Token ID | 父节点 | 深度")
+    print("-" * 35)
+    for node_idx, token_id, parent_id, depth in nodes:
+        print(f"{node_idx:4d}  | {token_id:8d} | {parent_id:6d} | {depth:4d}")
+    
+    print(f"总节点数: {tree_size}")
+    print(f"最大深度: {max(depths)}")
+    print("=" * 40)
+
+     
 class LLM_with_tree_drafter(LLM):
     def __init__(self,
                  drafter_type, drafter_path, base_path,
@@ -201,6 +233,15 @@ class LLM_with_tree_drafter(LLM):
                 # torch.cuda.nvtx.range_push(f"draft")
                 C.draft(self.tree_draft_ids.data_ptr(), self.tree_position_ids.data_ptr(), self.cache_length.data_ptr(), self.tree_attn_mask.data_ptr(), self.tree_parent.data_ptr())
                 # torch.cuda.nvtx.range_pop()
+
+                # 输出刚构建的生成树结构
+                print(f"=== 生成树构建完成 (Batch Step {i+1}) ===")
+                print(f"Tree Draft IDs: {self.tree_draft_ids.cpu().numpy()}")
+                print(f"Tree Position IDs: {self.tree_position_ids.cpu().numpy()}")
+                print(f"Tree Parent: {self.tree_parent.cpu().numpy()}")
+                # print(f"Tree Attention Mask: {self.tree_attn_mask.cpu().numpy()}")
+                print(f"Cache Length: {self.cache_length.cpu().numpy()}")
+                print("=" * 50)
 
                 logits = self.decode(self.tree_draft_ids, self.tree_position_ids, self.cache_length, mask_2d=self.tree_attn_mask)
                 if self.temperature > 0.0:

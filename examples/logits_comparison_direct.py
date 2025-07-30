@@ -63,6 +63,7 @@ def patch_model_for_logits_capture(model, capture: LogitsCapture):
     
     def patched_generate(*args, **kwargs):
         print(f"[{capture.config_name}] Generate called")
+        sys.stdout.flush()
         
         # Store original methods
         original_prefill = model.prefill
@@ -75,6 +76,7 @@ def patch_model_for_logits_capture(model, capture: LogitsCapture):
         def patched_prefill(*prefill_args, **prefill_kwargs):
             print(f"[{capture.config_name}] Prefill called")
             print(f"[{capture.config_name}] Prefill args[0] length: {len(prefill_args[0])}")
+            sys.stdout.flush()
             logits = original_prefill(*prefill_args, **prefill_kwargs)
             prefill_logits[0] = logits.detach().cpu().numpy() if logits is not None else None
             return logits
@@ -82,6 +84,7 @@ def patch_model_for_logits_capture(model, capture: LogitsCapture):
         def patched_decode(*decode_args, **decode_kwargs):
             decode_step_counter[0] += 1
             print(f"[{capture.config_name}] Decode step {decode_step_counter[0]}")
+            sys.stdout.flush()
             logits = original_decode(*decode_args, **decode_kwargs)
             if logits is not None:
                 stored_logits.append(logits.detach().cpu().numpy())
@@ -115,6 +118,7 @@ def patch_model_for_logits_capture(model, capture: LogitsCapture):
                     capture.captured_logits.append((step_id, token_logits.copy(), "accepted_prefill"))
                     capture.captured_tokens.append((step_id, first_token))
                     print(f"[{capture.config_name}] Step {step_id} (accepted_prefill): Token {first_token}, Logits preview: {token_logits[:5].tolist()}")
+                    sys.stdout.flush()
                 
                 # Process decode steps - only capture accepted tokens
                 token_idx = 1  # Start from second token (first is from prefill)
@@ -145,6 +149,7 @@ def patch_model_for_logits_capture(model, capture: LogitsCapture):
                         capture.captured_logits.append((step_id, token_logits.copy(), f"accepted_decode_{step_idx}_{j}"))
                         capture.captured_tokens.append((step_id, token))
                         print(f"[{capture.config_name}] Step {step_id} (accepted_decode_{step_idx}_{j}): Token {token}('{token_text}'), Logits preview: {token_logits[:5].tolist()}")
+                        sys.stdout.flush()
                     
                     token_idx += accept_length
             
@@ -181,29 +186,57 @@ def run_generation_with_config(spec_num_iter: int, spec_tree_size: int, config_n
     
     # Build argument list
     args_list = [
+        # config 1
         "--model-path", "/cache/lizhen/repos/temp-cpm/CPM.cu/models/MiniCPM4-8B/",
         "--draft-model-path", "/cache/lizhen/repos/temp-cpm/CPM.cu/models/MiniCPM4-8B-Eagle-FRSpec/",
-        # "--model-path", "unsloth/Meta-Llama-3.1-8B-Instruct",
-        # "--draft-model-path", "jamesliu1/sglang-EAGLE-Llama-3.1-Instruct-8B",
-        # "--frspec-path", "openbmb/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu",
-        "--prompt-file", "/cache/lizhen/repos/temp-cpm/CPM.cu/prompt.txt",
+        "--frspec-path", "openbmb/MiniCPM4-8B-Eagle-FRSpec",
+        "--prompt-text", "hello, how are you?",
         "--spec-num-iter", str(spec_num_iter),
         "--spec-topk-per-iter", str(topk_per_iter),  # Use calculated value
         "--spec-tree-size", str(spec_tree_size),
-        # "--num-generate", str(comparison_steps),  # Use comparison_steps for generation length
+        "--num-generate", str(comparison_steps),  # Use comparison_steps for generation length
         # "--minicpm4-yarn",
+        "--frspec-vocab-size", "0",
         "--spec-window-size", "0",
         "--model-type", "minicpm",
+        "--use-stream", "false",
+        "--use-chat-template", "true",
+        
+        # # config 2
+        # "--model-path", "unsloth/Meta-Llama-3.1-8B-Instruct",
+        # "--draft-model-path", "jamesliu1/sglang-EAGLE-Llama-3.1-Instruct-8B",
+        # "--prompt-text", "hello, how are you?",
+        # "--spec-num-iter", str(spec_num_iter),
+        # "--spec-topk-per-iter", str(topk_per_iter),  # Use calculated value
+        # "--spec-tree-size", str(spec_tree_size),
+        # "--num-generate", str(comparison_steps),  # Use comparison_steps for generation length
+        # "--frspec-vocab-size", "0",
+        # "--spec-window-size", "0",
+        # "--use-stream", "false",
+        # "--use-chat-template", "true",
+        
+        # # config 3
+        # "--model-path", "/cache/lizhen/repos/temp-cpm/CPM.cu/models/MiniCPM4-8B/",
+        # "--prompt-text", "hello, how are you?",
+        # "--spec-num-iter", str(spec_num_iter),
+        # "--spec-topk-per-iter", str(topk_per_iter),  # Use calculated value
+        # "--spec-tree-size", str(spec_tree_size),
+        # "--num-generate", str(comparison_steps),
+        # "--model-type", "minicpm",
+        # "--use-stream", "false",
+        # "--use-chat-template", "true",
+        
+        
         # "--memory-limit", "0.8",  # Set very conservative memory limit to prevent OOM
         # "--chunk-length", "1024",  # Reduce chunk length to save memory
         # "--cuda-graph", "false",  # Disable CUDA graph to save memory
     ]
     
     # Add chat template argument based on parameter
-    if use_chat_template:
-        args_list.extend(["--use-chat-template", "true"])
-    else:
-        args_list.extend(["--use-chat-template", "false"])
+    # if use_chat_template:
+    #     args_list.extend(["--use-chat-template", "true"])
+    # else:
+    #     args_list.extend(["--use-chat-template", "false"])
     
     args = parser.parse_args(args_list)
     
@@ -235,8 +268,9 @@ def run_generation_with_config(spec_num_iter: int, spec_tree_size: int, config_n
         return None
     
     # Load prompt
-    with open(args.prompt_file, 'r', encoding='utf-8') as f:
-        prompt_content = f.read().strip()
+    # with open(args.prompt_file, 'r', encoding='utf-8') as f:
+    #     prompt_content = f.read().strip()
+    prompt_content = args.prompt_text
     
     # Apply chat template
     if args.use_chat_template:
@@ -247,6 +281,8 @@ def run_generation_with_config(spec_num_iter: int, spec_tree_size: int, config_n
         )
     else:
         prompt = prompt_content
+        
+    print(f"Prompt: {prompt}")
     
     input_ids = tokenizer(prompt, return_tensors="pt")["input_ids"].to("cuda", dtype=torch.int32)
     print(f"Input tokens: {input_ids.shape[1]}")
@@ -317,8 +353,8 @@ def run_generation_with_config(spec_num_iter: int, spec_tree_size: int, config_n
         print(f"Mean accept length: {np.mean(accept_lengths)}")
         print(f"Captured steps: {len(capture.captured_logits)}")
         
-        # Save data
-        capture.save_data(f"logits_capture_{config_name}.pkl")
+        # Save data (with candidate info)
+        capture.save_data(f"logits_capture_{config_name}_with_candidates.pkl")
         
         return capture
         
