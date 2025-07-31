@@ -8,6 +8,7 @@ This module contains the main generation logic used by various frontends.
 
 import os
 import sys
+import time
 import torch
 from transformers import AutoTokenizer
 from .common.logging import logger
@@ -19,6 +20,8 @@ from .common.utils import (
 )
 from .common.args import parse_cli_args
 from .common.display import display
+from .common.benchmark import load_dataset, save_results
+
 
 def print_generation_stats(stats, has_speculative=False):
     """Print generation statistics summary using enhanced format."""
@@ -44,9 +47,26 @@ def print_generation_stats(stats, has_speculative=False):
     display.render_performance(formatted_stats)
 
 
-def make_input(tokenizer, args):
-    """Create input for generation based on arguments"""
-    if args.prompt_file:
+def make_input(tokenizer, args, question_text=None):
+    """Create input for generation based on arguments or provided question"""
+    
+    # 优先使用传入的question_text（用于数据集评估）
+    if question_text is not None:
+        # 处理多轮对话的情况
+        if isinstance(question_text, list):
+            # question_text是一个包含多轮对话的列表
+            messages = []
+            for j, turn in enumerate(question_text):
+                # 每个turn都是用户的输入
+                messages.append({"role": "user", "content": turn})
+                # 除了最后一轮，每轮后都需要添加一个assistant占位符
+                if j < len(question_text) - 1:
+                    messages.append({"role": "assistant", "content": "[Response to be generated]"})
+            prompt_content = messages
+        else:
+            # 单轮对话
+            prompt_content = question_text
+    elif args.prompt_file:
         if not os.path.exists(args.prompt_file):
             raise FileNotFoundError(f"Prompt file not found: {args.prompt_file}")
         with open(args.prompt_file, 'r', encoding='utf-8') as f:
@@ -59,21 +79,40 @@ def make_input(tokenizer, args):
     # Apply chat template if enabled (default: True)
     if getattr(args, 'use_chat_template', True):
         try:
-            prompt = tokenizer.apply_chat_template(
-                [{"role": "user", "content": prompt_content}], 
-                tokenize=False, 
-                add_generation_prompt=True
-            )
+            if isinstance(prompt_content, list):
+                # 如果是多轮对话消息列表，直接使用
+                prompt = tokenizer.apply_chat_template(
+                    prompt_content,
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
+            else:
+                # 单轮对话
+                prompt = tokenizer.apply_chat_template(
+                    [{"role": "user", "content": prompt_content}], 
+                    tokenize=False, 
+                    add_generation_prompt=True
+                )
         except Exception as e:
             logger.warning(f"Failed to apply chat template: {e}, using raw prompt")
-            prompt = prompt_content
+            if isinstance(prompt_content, list):
+                # 如果是消息列表，提取最后一个用户消息
+                prompt = prompt_content[-1]['content'] if prompt_content else ""
+            else:
+                prompt = prompt_content
     else:
-        prompt = prompt_content
-        logger.info("Using raw prompt (chat template disabled)")
+        if isinstance(prompt_content, list):
+            # 如果是消息列表，提取最后一个用户消息
+            prompt = prompt_content[-1]['content'] if prompt_content else ""
+        else:
+            prompt = prompt_content
+        if question_text is None:  # 只在非数据集模式下显示prompt
+            logger.info("Using raw prompt (chat template disabled)")
     
     # Show prompt with special characters escaped for better readability in logs
-    escaped_prompt = repr(prompt[:100])  # Remove outer quotes from repr()
-    logger.info(f"Input prompt: {escaped_prompt}{'...' if len(prompt) > 100 else ''}", escape=True)
+    if question_text is None:  # 只在非数据集模式下显示完整prompt
+        escaped_prompt = repr(prompt[:100])  # Remove outer quotes from repr()
+        logger.info(f"Input prompt: {escaped_prompt}{'...' if len(prompt) > 100 else ''}", escape=True)
     
     input_ids = tokenizer(prompt, return_tensors="pt")["input_ids"]
     return input_ids.to("cuda", dtype=torch.int32)
@@ -168,14 +207,20 @@ def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
         )
         
         # Extract tokens and statistics from results
-        input_length = len(input_ids.view(-1))
         has_speculative = config.get('draft_model_path') is not None
         
-        if has_speculative:
-            tokens, accept_lengths, decode_time, prefill_time = results
+        # Extract results - handle different return types safely
+        if isinstance(results, tuple):
+            if has_speculative and len(results) == 4:
+                tokens, accept_lengths, decode_time, prefill_time = results
+            elif len(results) >= 3:
+                tokens, decode_time, prefill_time = results[:3]
+                accept_lengths = results[1] if has_speculative and len(results) > 3 else None
+            else:
+                raise ValueError(f"Unexpected generation results format: {len(results)} elements")
         else:
-            tokens, decode_time, prefill_time = results
-            accept_lengths = None
+            # Handle generator case - should not happen in non-stream mode
+            raise ValueError("Unexpected generator return in non-stream mode")
         
         # Decode tokens and handle edge cases
         generated_text = tokenizer.decode(tokens, skip_special_tokens=True) or ""
@@ -186,7 +231,7 @@ def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
 
         # Create and populate statistics
         stats = {
-            'input_length': input_length,
+            'input_length': len(input_ids.view(-1)),
             'decode_length': len(tokens),
             'prefill_time': prefill_time,
             'decode_time': decode_time,
@@ -292,6 +337,242 @@ def run_generation(args):
         raise RuntimeError(f"Error during generation: {e}")
 
 
+def run_dataset_evaluation(args):
+    """Run evaluation on dataset"""
+    
+    # Display configuration
+    display.render_config(args, "CPM.cu Dataset Evaluation")
+    
+    # Load dataset
+    logger.info(f"Loading {args.dataset} dataset...")
+    questions, total_questions = load_dataset(args.dataset, args.dataset_path)
+    logger.success(f"Loaded {total_questions} questions")
+    
+    # Setup model (reuse existing logic)
+    config = vars(args)
+    model_path, draft_model_path, frspec_path = setup_model_paths(config)
+    
+    # Load tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    logger.info(f"Loaded tokenizer from: [cyan]{model_path}[/cyan]")
+    
+    # Create model
+    llm = create_model(model_path, draft_model_path, config)
+    logger.info(f"Created model: [yellow]{type(llm).__name__}[/yellow]")
+    
+    # Initialize model
+    llm.init_storage()
+    
+    # Apply configurations
+    if getattr(args, 'minicpm4_yarn', False):
+        apply_minicpm4_yarn_config(llm)
+    
+    has_speculative = getattr(args, 'draft_model_path', None) is not None
+    if has_speculative and (frspec_path is not None) and (getattr(args, 'frspec_vocab_size', 0) > 0):
+        setup_frspec_vocab(llm, frspec_path, getattr(args, 'frspec_vocab_size', 0))
+    
+    # Load model weights
+    logger.info("Loading model weights...")
+    llm.load_from_hf()
+    logger.success("Model loading completed!")
+    
+    # Setup terminators
+    terminators = []
+    if not getattr(args, 'ignore_eos', False):
+        terminators.append(tokenizer.eos_token_id)
+    
+    # Process questions
+    results = []
+    
+    logger.info(f"Starting evaluation on {total_questions} questions...")
+    
+    for i, question_item in enumerate(questions, 1):
+        question_id = question_item['id']
+        question_text = question_item['question']
+        category = question_item['category']
+        turns = question_item.get('turns', [])
+        
+        logger.info(f"Processing question {i}/{total_questions} (ID: {question_id})")
+        
+        try:
+            # 初始化多轮对话的数据
+            messages = []
+            turn_responses = []
+            turn_timings = []
+            all_accept_lengths = []
+            
+            # 确保至少有一个turn
+            if not turns:
+                turns = [question_text]
+            
+            # 逐轮处理对话
+            for j, turn in enumerate(turns):
+                logger.info(f"  Turn {j+1}/{len(turns)}")
+                
+                # 添加用户消息
+                messages.append({"role": "user", "content": turn})
+                
+                # 准备输入
+                if getattr(args, 'use_chat_template', True):
+                    prompt = tokenizer.apply_chat_template(
+                        messages,
+                        tokenize=False,
+                        add_generation_prompt=True
+                    )
+                    input_ids = tokenizer(prompt, return_tensors="pt")["input_ids"].to("cuda", dtype=torch.int32)
+                else:
+                    # 不使用chat template时，只使用当前turn
+                    input_ids = tokenizer(turn, return_tensors="pt")["input_ids"].to("cuda", dtype=torch.int32)
+                
+                # 生成回答
+                turn_start_time = time.time()
+                
+                generation_results = llm.generate(
+                    input_ids=input_ids.view(-1),
+                    generation_length=config['num_generate'],
+                    teminators=terminators,
+                    use_stream=False
+                )
+                
+                # 提取结果
+                if isinstance(generation_results, tuple):
+                    if has_speculative and len(generation_results) == 4:
+                        tokens, accept_lengths, decode_time, prefill_time = generation_results
+                    elif len(generation_results) >= 3:
+                        tokens, decode_time, prefill_time = generation_results[:3]
+                        accept_lengths = generation_results[1] if has_speculative and len(generation_results) > 3 else None
+                    else:
+                        raise ValueError(f"Unexpected generation results format: {len(generation_results)} elements")
+                else:
+                    raise ValueError("Unexpected generator return in non-stream mode")
+                
+                # 解码生成的tokens
+                generated_text = tokenizer.decode(tokens, skip_special_tokens=True)
+                turn_total_time = time.time() - turn_start_time
+                
+                # 记录这一轮的结果
+                turn_responses.append(generated_text)
+                turn_timings.append({
+                    'prefill_time': prefill_time,
+                    'decode_time': decode_time,
+                    'total_time': turn_total_time,
+                    'input_length': len(input_ids.view(-1)),
+                    'output_length': len(tokens)
+                })
+                
+                if accept_lengths:
+                    all_accept_lengths.extend(accept_lengths)
+                
+                # 将生成的回答添加到messages中，作为下一轮的上下文
+                messages.append({"role": "assistant", "content": generated_text})
+                
+                logger.info(f"    ✓ Turn {j+1} completed in {turn_total_time:.2f}s")
+            
+            # 汇总所有轮次的统计数据
+            total_time = sum(t['total_time'] for t in turn_timings)
+            total_input_tokens = sum(t['input_length'] for t in turn_timings)
+            total_output_tokens = sum(t['output_length'] for t in turn_timings)
+            
+            # 存储结果
+            result = {
+                'id': question_id,
+                'question': question_text,  # 保留原始第一个问题
+                'turns': turns,  # 所有轮次的问题
+                'responses': turn_responses,  # 每轮的回答
+                'category': category,
+                'timing': {
+                    'prefill_time': sum(t['prefill_time'] for t in turn_timings),
+                    'decode_time': sum(t['decode_time'] for t in turn_timings),
+                    'total_time': total_time,
+                    'turn_timings': turn_timings  # 每轮的详细时间
+                },
+                'tokens': {
+                    'input_length': total_input_tokens,
+                    'output_length': total_output_tokens,
+                    'turn_tokens': [(t['input_length'], t['output_length']) for t in turn_timings]
+                }
+            }
+            
+            if all_accept_lengths:
+                result['accept_lengths'] = all_accept_lengths
+                # 计算当前问题的mean accept length
+                mean_accept_length = sum(all_accept_lengths) / len(all_accept_lengths)
+                result['mean_accept_length'] = round(mean_accept_length, 2)
+            
+            results.append(result)
+            
+            logger.info(f"✓ Question {i} completed in {total_time:.2f}s")
+            
+        except Exception as e:
+            logger.error(f"✗ Question {i} failed: {e}")
+            results.append({
+                'id': question_id,
+                'question': question_text,
+                'response': f"ERROR: {str(e)}",
+                'category': category,
+                'error': True
+            })
+    
+    # Save results
+    # Extract real model name from path
+    if '/' in model_path and not model_path.startswith('/'):
+        # For HuggingFace paths like "unsloth/Meta-Llama-3.1-8B-Instruct"
+        parts = model_path.split('/')
+        if len(parts) >= 2:
+            model_name = '/'.join(parts[-2:])  # Keep org/model format
+        else:
+            model_name = parts[-1]
+    else:
+        # For local paths (starting with /) or simple names
+        model_name = os.path.basename(model_path)
+    
+    output_file = save_results(results, args.output_dir, args.dataset, model_name)
+    
+    # Calculate and display dataset evaluation summary
+    successful_results = [r for r in results if not r.get('error', False)]
+    if successful_results:
+        # Calculate summary statistics (same as save_results)
+        successful = len(successful_results)
+        total_time = sum(r.get('timing', {}).get('total_time', 0) for r in successful_results)
+        total_tokens = sum(r.get('tokens', {}).get('output_length', 0) for r in successful_results)
+        
+        # Calculate mean accept length for speculative decoding
+        all_accept_lengths = []
+        for r in successful_results:
+            if 'accept_lengths' in r and r['accept_lengths']:
+                all_accept_lengths.extend(r['accept_lengths'])
+        
+        summary_stats = {
+            'total_time': round(total_time, 2),
+            'avg_time_per_question': round(total_time / successful, 2) if successful > 0 else 0,
+            'total_output_tokens': total_tokens,
+            'avg_tokens_per_question': round(total_tokens / successful, 2) if successful > 0 else 0,
+            'throughput_tokens_per_sec': round(total_tokens / total_time, 2) if total_time > 0 else 0
+        }
+        
+        # Add mean accept length if available
+        if all_accept_lengths:
+            mean_accept_length = sum(all_accept_lengths) / len(all_accept_lengths)
+            summary_stats['mean_accept_length'] = round(mean_accept_length, 2)
+        
+        success_rate = successful / total_questions if total_questions > 0 else 0
+        
+        # Display dataset evaluation summary
+        display.render_dataset_summary(
+            args.dataset, model_name, total_questions, 
+            successful, success_rate, summary_stats
+        )
+    
+    # Print summary
+    successful = len([r for r in results if not r.get('error', False)])
+    
+    # Display dataset evaluation summary
+    logger.info(f"Dataset: [cyan]{args.dataset}[/cyan] | Questions: [cyan]{total_questions}[/cyan] | Successful: [green]{successful}[/green]")
+    logger.success(f"Evaluation completed: {successful}/{total_questions} questions successful")
+    
+    return results
+
+
 def main():
     """Entry point for the command-line interface"""
     try:
@@ -304,7 +585,10 @@ def main():
         Display.configure(use_plain_mode=use_plain_mode)
         Logger.configure(use_plain_mode=use_plain_mode)
         
-        run_generation(args)
+        if args.dataset:
+            run_dataset_evaluation(args)
+        else:
+            run_generation(args)
 
     except (ValueError, FileNotFoundError) as e:
         logger.error(f"Configuration error: {e}")
