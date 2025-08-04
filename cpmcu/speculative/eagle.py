@@ -8,10 +8,14 @@ class EagleConfig(PretrainedConfig):
     def __init__(
         self,
         num_hidden_layers=1,
+        eagle_version=2,  # 2 or 3
+        draft_vocab_size=None,  # For Eagle3
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.eagle_num_layers = num_hidden_layers
+        self.eagle_version = eagle_version
+        self.draft_vocab_size = draft_vocab_size
 
 class LLM_with_eagle(LLM_with_tree_drafter):
     def __init__(self,
@@ -58,7 +62,25 @@ class LLM_with_eagle(LLM_with_tree_drafter):
             self.group_size = 0
         assert self.group_size == 128 or self.group_size == 0, "only group_size 128 is supported in quantization mode"
 
-        if not use_rope and not use_input_norm and not use_attn_norm and not apply_eagle_quant:
+        # Check if this is Eagle3
+        eagle_version = getattr(self.eagle_config, 'eagle_version', 2)
+        draft_vocab_size = getattr(self.eagle_config, 'draft_vocab_size', 0) or 0
+        
+        if eagle_version == 3:
+            # Eagle3 initialization
+            C.init_eagle3_model(
+                self.eagle_config.intermediate_size,
+                self.eagle_config.num_attention_heads,
+                self.eagle_config.num_key_value_heads,
+                self.eagle_config.head_dim,
+                self.eagle_config.rms_norm_eps,
+                num_iter,
+                topk_per_iter,
+                self.tree_size,
+                self.dtype_int,
+                draft_vocab_size
+            )
+        elif not use_rope and not use_input_norm and not use_attn_norm and not apply_eagle_quant:
             C.init_eagle_model(
                 self.eagle_config.eagle_num_layers,
                 self.eagle_config.intermediate_size,
@@ -94,25 +116,52 @@ class LLM_with_eagle(LLM_with_tree_drafter):
 
     def _load(self, name, param, dtype=None, cls=None):
         if cls == self.drafter_type:
+            eagle_version = getattr(self.eagle_config, 'eagle_version', 2)
+            
             if name == "token_id_remap":
                 C.load_model(f"{cls}.{name}", param.data_ptr())
                 return
+            if name == "d2t" or name == "t2d":
+                # Eagle3 vocab mapping
+                if eagle_version == 3:
+                    C.load_model(f"{cls}.{name}", param.data_ptr())
+                return
+                
             if dtype is None:
                 dtype = self.dtype
             param = param.contiguous()
             if not self.apply_eagle_quant:
                 param = param.to(dtype)
-            if 'embed_tokens' in name:
-                return
-            if 'fc' in name:
-                if 'weight' in name or "scales" in name:
-                    param1 = param[..., :param.shape[-1] // 2].contiguous()
-                    param2 = param[..., param.shape[-1] // 2:].contiguous()
-                    C.load_model(f"{cls}.{name.replace('fc', 'fc1')}", param1.data_ptr())
-                    C.load_model(f"{cls}.{name.replace('fc', 'fc2')}", param2.data_ptr())
-                else: # bias
-                    C.load_model(f"{cls}.{name.replace('fc', 'fc1')}", param.data_ptr())
+                
+            if eagle_version == 3:
+                # Eagle3 specific loading
+                if 'embed_tokens' in name:
+                    C.load_model(f"{cls}.{name}", param.data_ptr())
+                elif 'lm_head' in name:
+                    C.load_model(f"{cls}.{name}", param.data_ptr())
+                elif 'norm' in name:
+                    C.load_model(f"{cls}.{name}", param.data_ptr())
+                elif 'fc' in name and not ('fc1' in name or 'fc2' in name):
+                    # Eagle3 uses single fc layer
+                    C.load_model(f"{cls}.{name}", param.data_ptr())
+                elif 'midlayer' in name:
+                    # Handle midlayer weights
+                    C.load_model(f"{cls}.{name}", param.data_ptr())
+                else:
+                    C.load_model(f"{cls}.{name}", param.data_ptr())
             else:
-                C.load_model(f"{cls}.{name}", param.data_ptr())
+                # Eagle2 loading logic
+                if 'embed_tokens' in name:
+                    return
+                if 'fc' in name:
+                    if 'weight' in name or "scales" in name:
+                        param1 = param[..., :param.shape[-1] // 2].contiguous()
+                        param2 = param[..., param.shape[-1] // 2:].contiguous()
+                        C.load_model(f"{cls}.{name.replace('fc', 'fc1')}", param1.data_ptr())
+                        C.load_model(f"{cls}.{name.replace('fc', 'fc2')}", param2.data_ptr())
+                    else: # bias
+                        C.load_model(f"{cls}.{name.replace('fc', 'fc1')}", param.data_ptr())
+                else:
+                    C.load_model(f"{cls}.{name}", param.data_ptr())
         else:
             super()._load(name, param, dtype)

@@ -158,4 +158,17 @@ struct MiniCPM4W4A16GPTQMarlinModelImpl : Model {
 
     void draft(int32_t *tree_draft_ids, int32_t *tree_position_ids, int32_t *cache_length, uint64_t* attn_mask, int32_t* tree_parent) { throw std::runtime_error("Draft is not supported"); }
     int verify(int32_t num_tokens, int32_t* pred, int32_t* gt, int32_t* position_ids, int32_t* cache_length, uint64_t* attn_mask, int32_t* tree_parent) { throw std::runtime_error("Verify is not supported"); }
+
+    // EAGLE3 support: return specified layer outputs for multi-layer feature extraction
+    int save_layer_indices[3] = {2, 16, 29};  // Default layer indices
+    
+    const T* const* get_eagle3_layer_outputs() const {
+        static const T* ptrs[3];
+        for (int i = 0; i < 3; i++) {
+            int layer_index = save_layer_indices[i];
+            // 注意：MiniCPM4需要返回未缩放的hidden states用于EAGLE3
+            ptrs[i] = this->layers[layer_index]->output; 
+        }
+        return ptrs;
+    }
 };

@@ -16,6 +16,7 @@
 
 // eagle
 #include "model/eagle.cuh"
+#include "model/eagle3/eagle3.cuh"
 #include "model/minicpm4/minicpm4_eagle.cuh"
 #include "model/eagle_base_quant/eagle_base_w4a16_gptq_marlin.cuh"
 
@@ -319,6 +320,42 @@ void init_eagle_model(
     }
 }
 
+// eagle3 model
+void init_eagle3_model(
+    int intermediate_size,
+    int num_attention_heads,
+    int num_key_value_heads,
+    int head_dim,
+    float rms_norm_eps,
+    int num_iter,
+    int topk_per_iter,
+    int tree_size,
+    int torch_dtype,
+    int draft_vocab_size
+) {
+    bool dispatch_model = false;
+    DTYPE_SWITCH(torch_dtype, [&] {
+        MODEL_TYPE_SWITCH(model, elem_type, [&] {
+            dispatch_model = true;
+            model = new Eagle3Impl<elem_type, ModelType>(
+                typed_model,
+                intermediate_size,
+                num_attention_heads,
+                num_key_value_heads,
+                head_dim,
+                rms_norm_eps,
+                num_iter,
+                topk_per_iter,
+                tree_size,
+                draft_vocab_size
+            );
+        });
+    });
+    if (!dispatch_model) {
+        printf("Model type failed to dispatch: %s\n", typeid(*model).name());
+    }
+}
+
 void init_minicpm4_eagle_model(
     int num_layers,
     int intermediate_size,
@@ -546,6 +583,7 @@ PYBIND11_MODULE(C, m) {
 
     // eagle bind
     m.def("init_eagle_model", &init_eagle_model, "Init eagle model");
+    m.def("init_eagle3_model", &init_eagle3_model, "Init eagle3 model");
     m.def("init_minicpm4_eagle_model", &init_minicpm4_eagle_model, "Init minicpm4 eagle model");
     // spec bind
     m.def("init_w4a16_gm_spec_w4a16_gm_model", &init_w4a16_gm_spec_w4a16_gm_model, "Init w4a16 spec v1 model");

@@ -177,4 +177,16 @@ struct ModelImpl : Model {
 
     void draft(int32_t *tree_draft_ids, int32_t *tree_position_ids, int32_t *cache_length, uint64_t* attn_mask, int32_t* tree_parent) { throw std::runtime_error("Draft is not supported"); }
     int verify(int32_t num_tokens, int32_t* pred, int32_t* gt, int32_t* position_ids, int32_t* cache_length, uint64_t* attn_mask, int32_t* tree_parent) { throw std::runtime_error("Verify is not supported"); }
+    // params and impls only for eagle3
+    int save_layer_indices[3] = {2, 16, 29};  // 需要保存的层索引
+
+    // 返回指定三层的hidden states的只读指针数组，单次prefill/decode layer->output是持久化的，直到下一次decode覆盖
+    const T* const* get_eagle3_layer_outputs() const {
+        static const T* ptrs[3];
+        for (int i = 0; i < 3; i++) {
+            int layer_index = save_layer_indices[i];
+            ptrs[i] = this->layers[layer_index]->output;
+        }
+        return ptrs;
+    }
 };
