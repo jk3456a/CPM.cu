@@ -330,6 +330,9 @@ def run_generation(args):
             generated_text = run_stream_generation(llm, input_ids, config, terminators, tokenizer)
         else:
             generated_text = run_non_stream_generation(llm, input_ids, config, terminators, tokenizer)
+        
+        # Print performance profiling summary if available
+        llm.print_perf_summary()
             
         return generated_text
         
