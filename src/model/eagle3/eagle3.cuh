@@ -104,6 +104,7 @@ struct Eagle3Impl : Model {
     // Multi-layer feature buffer
     T* multi_layer_features;         // 拼接后的特征缓冲区 (12288维)
     T* base_model_hidden_states = nullptr;     // 从Base Model接收的multi hidden states - 初始化为nullptr
+    bool base_model_hidden_states_valid = false;  // 标志：base_model_hidden_states是否包含有效数据
     T* attention_input_buffer;       // attention输入缓冲区 (8192维 = embedding + hidden)
     int num_feature_layers;
     
@@ -171,6 +172,33 @@ struct Eagle3Impl : Model {
         assert(this->tree_size <= 64); // tree_size must be <= 64
         this->total_tried = topk_per_iter * topk_per_iter * (num_iter - 1) + topk_per_iter;
         
+        // 初始化所有指针为nullptr，防止未初始化的指针导致问题
+        d2t_mapping = nullptr;
+        multi_layer_features = nullptr;
+        base_model_hidden_states = nullptr;
+        base_model_hidden_states_valid = false;
+        attention_input_buffer = nullptr;
+        prev_hidden_state = nullptr;
+        prev_embed = nullptr;
+        eagle_position_ids = nullptr;
+        eagle_cache_length = nullptr;
+        eagle_original_length = nullptr;
+        eagle_mask_2d = nullptr;
+        tmp_mask_2d = nullptr;
+        eagle_logits = nullptr;
+        tried_history_val = nullptr;
+        tried_history_pos = nullptr;
+        tried_history_parent = nullptr;
+        h_best = nullptr;
+        d_best = nullptr;
+        tmp_kvcache = nullptr;
+        
+        // 初始化其他成员变量
+        num_prev = 0;
+        num_history_tokens = 0;
+        eagle_padded_length = 0;
+        is_first_draft = true;
+        
         this->vocab_size = model->vocab_size;  // target vocab size (如：73448)
         this->draft_vocab_size = (draft_vocab_size > 0) ? draft_vocab_size : model->vocab_size;  // draft vocab size (如：32000)
         this->need_vocab_mapping = (this->draft_vocab_size != this->vocab_size);
@@ -179,6 +207,8 @@ struct Eagle3Impl : Model {
         
         // Eagle3 specific components
         fc = new Linear<T>(this->model->hidden_size * num_feature_layers, this->model->hidden_size);  // 12288 -> 4096 (3x hidden_size输入)
+        // 注意：暂时复用base model的embedding，但要确保不影响base model
+        // TODO: 考虑是否需要创建独立的embedding实例
         eagle_embeddings = this->model->embedding;  // 直接复用base model的embedding，不创建新的
         eagle_lm_head = new Linear<T>(this->model->hidden_size, this->draft_vocab_size);
         output_norm = new RMSNorm<T>(this->model->hidden_size, rms_norm_eps);
@@ -206,8 +236,8 @@ struct Eagle3Impl : Model {
         delete topk_func_2;
         
         // 释放host内存
-        if (eagle_original_length) cudaFreeHost(eagle_original_length);
-        if (h_best) cudaFreeHost(h_best);
+        if (eagle_original_length) cudaCheck(cudaFreeHost(eagle_original_length));
+        if (h_best) cudaCheck(cudaFreeHost(h_best));
         
         // 注意：其他GPU内存（如multi_layer_features等）由Memory管理器统一释放
     }
@@ -266,23 +296,23 @@ struct Eagle3Impl : Model {
         offset = memory->allocate((void**)&tried_history_val, offset, this->total_tried * sizeof(T));
         offset = memory->allocate((void**)&tried_history_pos, offset, this->total_tried * sizeof(int32_t));
         offset = memory->allocate((void**)&tried_history_parent, offset, this->topk_per_iter * (this->num_iter - 1) * sizeof(int32_t));
-        cudaMallocHost(&eagle_original_length, sizeof(int32_t));
+        cudaCheck(cudaMallocHost(&eagle_original_length, sizeof(int32_t)));
 
         offset = topk_func->init_output_ptr(memory, this->topk_per_iter, offset);
         offset = topk_func_2->init_output_ptr(memory, 1, offset);
 
-        offset = memory->allocate((void**)&prev_hidden_state, offset, num_tokens * this->model->hidden_size * sizeof(T));
+        offset = memory->allocate((void**)&prev_hidden_state, offset, num_tokens * this->model->hidden_size * 3 * sizeof(T));
         offset = memory->allocate((void**)&prev_embed, offset, num_tokens * this->model->hidden_size * sizeof(T));
         offset = memory->allocate((void**)&eagle_position_ids, offset, num_tokens * sizeof(int32_t));
         offset = memory->allocate((void**)&eagle_cache_length, offset, sizeof(int32_t));
 
         offset = memory->allocate((void**)&d_best, offset, 2 * sizeof(int32_t));
-        cudaMallocHost(&h_best, 2 * sizeof(int32_t));
+        cudaCheck(cudaMallocHost(&h_best, 2 * sizeof(int32_t)));
         
-        // EAGLE3专用的临时KV cache缓冲区 - 只需要1层，不是base model的多层
-        // 大小：max_tree_size * 单层 * K+V * hidden_dim
+        // 临时KV cache缓冲区 - 需要处理base model的所有层 + Eagle3的1层
+        // 大小：max_tree_size * (base_model_layers + eagle_layers) * K+V * hidden_dim
         offset = memory->allocate((void**)&tmp_kvcache, offset, 
-                                  64 * 1 * 2 * this->kv_caches->dim * sizeof(T));
+                                  64 * (this->model->num_hidden_layers + 1) * 2 * this->kv_caches->dim * sizeof(T));
         return offset;
     }
 
@@ -312,7 +342,7 @@ struct Eagle3Impl : Model {
         } else if (name == "d2t") {
             // Load draft to target vocab mapping (torch.int64)
             if (need_vocab_mapping && d2t_mapping != nullptr) {
-                cudaMemcpy(d2t_mapping, ptr, draft_vocab_size * sizeof(int64_t), cudaMemcpyHostToDevice);
+                cudaCheck(cudaMemcpy(d2t_mapping, ptr, draft_vocab_size * sizeof(int64_t), cudaMemcpyHostToDevice));
             }
         // } else if (name == "t2d") {
         //     // Load target to draft vocab mapping (torch.bool)
@@ -349,48 +379,26 @@ struct Eagle3Impl : Model {
      * @param num_history_tokens 历史token数量（用于attention mask）
      */
     void eagle_prefill(int num_history_tokens) {
-        // Eagle3: Use eagle's own embedding instead of base model's
-        this->eagle_embeddings->prefill(calc_stream, 1, 
-                                        reinterpret_cast<int32_t*>(this->model->norm->output));
+        // 在第一次draft时，我们需要使用最后一个token的embedding
+        // 但是我们已经在prefill中保存了prev_embed，所以不需要重新计算
+        // 直接使用已保存的prev_embed即可
         
-        // Get multi-layer features from base model
-        // EAGLE3使用分布式层采样策略，而非简单的最后3层
-        int layer_indices[3];
-        int total_layers = this->model->num_hidden_layers;
-        if (num_feature_layers == 3 && total_layers == 32) {
-            // 对于32层模型的标准配置
-            layer_indices[0] = 2;                    // 浅层特征 (idx=2)
-            layer_indices[1] = total_layers / 2;     // 中层特征 (idx=16)
-            layer_indices[2] = total_layers - 3;     // 深层特征 (idx=29)
-        } else {
-            // 其他层数的模型，使用启发式分布
-            layer_indices[0] = std::max(1, total_layers / 16);           // 浅层
-            layer_indices[1] = total_layers / 2;                         // 中层
-            layer_indices[2] = std::max(total_layers - 3, total_layers * 3 / 4); // 深层
-        }
+        // 对于第一次draft，我们只处理1个token（最后一个）
+        this->num_prev = 1;
         
-        // 检查是否有外部提供的base_model_hidden_states
-        if (this->base_model_hidden_states != nullptr) {
-            // 使用外部预拼接的特征（优先级较高，用于特殊场景）
-            // 输入: [num_prev, 12288] (hidden_size * 3)
-            cudaMemcpy(multi_layer_features, this->base_model_hidden_states,
-                       num_prev * this->model->hidden_size * num_feature_layers * sizeof(T),
-                       cudaMemcpyDeviceToDevice);
-        } else {
-            // 使用基础模型的真实多层输出
-            const T* const* layer_outputs = this->model->get_eagle3_layer_outputs();
-            
-            // 拼接三层特征: [num_prev, 4096] x 3 -> [num_prev, 12288]
-            // layer_outputs[0] = Layer 2 output
-            // layer_outputs[1] = Layer 16 output  
-            // layer_outputs[2] = Layer 29 output
-            multi_layer_concat(calc_stream, num_prev, this->model->hidden_size,
-                              layer_outputs[0], layer_outputs[1], layer_outputs[2],
-                              multi_layer_features);
-        }
+        // 直接使用在prefill中已经拼接好的多层特征（从prev_hidden_state的最后一个token）
+        // prev_hidden_state维度: [num_tokens, hidden_size*3] = [num_tokens, 12288]
+        // 我们需要最后一个token的12288维特征
+        // 最后一个token在prev_hidden_state中的索引是 (总token数 - 1)
+        int total_tokens = this->num_history_tokens + 1;  // history + 当前token
+        int last_token_offset = (total_tokens - 1) * this->model->hidden_size * 3;
+        cudaCheck(cudaMemcpy(multi_layer_features, 
+                            this->prev_hidden_state + last_token_offset,
+                            this->num_prev * this->model->hidden_size * num_feature_layers * sizeof(T),
+                            cudaMemcpyDeviceToDevice));
         
         // Apply FC to concatenated multi-layer features
-        this->fc->prefill(calc_stream, num_prev, multi_layer_features);
+        this->fc->prefill(calc_stream, this->num_prev, multi_layer_features);
         
         // 调用Eagle3Layer的特殊prefill方法，传入分离的embedding和hidden_states
         // Eagle3Layer内部会：
@@ -398,18 +406,18 @@ struct Eagle3Impl : Model {
         // 2. 拼接embedding和hidden_states为8192维用于attention
         // 3. attention输出后与residual相加，得到4096维
         // 4. 传给FFN的是4096维
-        this->eagle_layer->prefill(num_prev, num_history_tokens, 
-                                   this->eagle_embeddings->output,  // embedding: 4096维
+        this->eagle_layer->prefill(this->num_prev, num_history_tokens, 
+                                   this->prev_embed,                // 使用已保存的embedding: 4096维
                                    this->fc->output,                // hidden_states: 4096维
                                    this->eagle_position_ids, 
                                    this->kv_caches->caches[0],
                                    this->attention_input_buffer);   // concat buffer: 8192维
         
         // Apply output norm and store result
-        this->output_norm->prefill(calc_stream, num_prev, this->eagle_layer->output, nullptr);
-        cudaMemcpy(this->fc->output, this->output_norm->output, 
-                   num_prev * this->model->hidden_size * sizeof(T), 
-                   cudaMemcpyDeviceToDevice);
+        this->output_norm->prefill(calc_stream, this->num_prev, this->eagle_layer->output, nullptr);
+        cudaCheck(cudaMemcpy(this->fc->output, this->output_norm->output, 
+                   this->num_prev * this->model->hidden_size * sizeof(T), 
+                   cudaMemcpyDeviceToDevice));
     }
 
     /**
@@ -432,20 +440,43 @@ struct Eagle3Impl : Model {
      * @param cache_length KV cache的当前长度
      */
     void eagle_decode(int32_t* cache_length) {
+        // Sync and check for any existing CUDA errors
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            printf("ERROR: CUDA error before eagle_decode: %s\n", cudaGetErrorString(err));
+            throw std::runtime_error("CUDA error detected before eagle_decode");
+        }
+        
+        // Debug: Check if tried_history_pos is valid
+        if (this->tried_history_pos == nullptr) {
+            printf("ERROR: tried_history_pos is nullptr in eagle_decode\n");
+            throw std::runtime_error("tried_history_pos not initialized");
+        }
+        
         // Eagle3: Use eagle's own embeddings for candidate tokens
         this->eagle_embeddings->prefill(calc_stream, num_prev, this->tried_history_pos);
         
-        // 检查是否有外部提供的base_model_hidden_states
-        if (this->base_model_hidden_states != nullptr) {
+        // 检查是否有有效的外部提供的base_model_hidden_states
+        if (this->base_model_hidden_states_valid) {
             // 使用外部预拼接的特征（优先级较高，用于特殊场景）
             // 输入: [num_prev, 12288] (hidden_size * 3)
-            cudaMemcpy(multi_layer_features, this->base_model_hidden_states,
+            cudaCheck(cudaMemcpy(multi_layer_features, this->base_model_hidden_states,
                        num_prev * this->model->hidden_size * num_feature_layers * sizeof(T),
-                       cudaMemcpyDeviceToDevice);
+                       cudaMemcpyDeviceToDevice));
         } else {
             // 使用基础模型的真实多层输出（最常用的情况）
             // 这些特征来自最近一次base model的forward过程
             const T* const* base_layer_outputs = this->model->get_eagle3_layer_outputs();
+            
+            // Check if layer outputs are valid
+            if (base_layer_outputs == nullptr) {
+                throw std::runtime_error("get_eagle3_layer_outputs returned nullptr");
+            }
+            for (int i = 0; i < 3; i++) {
+                if (base_layer_outputs[i] == nullptr) {
+                    throw std::runtime_error("Layer output is nullptr");
+                }
+            }
             
             // 拼接三层特征: [num_prev, 4096] x 3 -> [num_prev, 12288]
             // base_layer_outputs[0] = Layer 2 output
@@ -497,14 +528,28 @@ struct Eagle3Impl : Model {
      */
     void prefill(int32_t num_tokens, int32_t num_history_tokens, int32_t* input, int32_t* position_ids, void* output) {
         this->model->embedding->prefill(calc_stream, num_tokens, input);
-        if (num_history_tokens > 0) {
-            this->eagle_prefill(this->num_history_tokens);
-        }
-
-        cudaMemcpy(this->prev_embed, this->model->embedding->output + this->model->hidden_size, (num_tokens - 1) * this->model->hidden_size * sizeof(T), cudaMemcpyDeviceToDevice);
+        cudaCheck(cudaMemcpy(this->prev_embed, this->model->embedding->output + this->model->hidden_size, (num_tokens - 1) * this->model->hidden_size * sizeof(T), cudaMemcpyDeviceToDevice));
+        
+        // 先执行base model的prefill以获得多层特征
         this->model->prefill_embed(num_tokens, num_history_tokens, this->model->embedding->output, position_ids, output);
-        this->prev_hidden_state = this->model->norm->output;
-        cudaMemcpy(this->eagle_position_ids, position_ids, num_tokens * sizeof(int32_t), cudaMemcpyDeviceToDevice);
+        
+        // 获取base model prefill后的多层特征并拼接成12288维
+        const T* const* base_layer_outputs = this->model->get_eagle3_layer_outputs();
+        if (base_layer_outputs == nullptr) {
+            throw std::runtime_error("get_eagle3_layer_outputs returned nullptr in prefill");
+        }
+        
+        // 拼接三层特征到prev_hidden_state: [num_tokens, 4096] x 3 -> [num_tokens, 12288]
+        multi_layer_concat(calc_stream, num_tokens, this->model->hidden_size, 
+                          base_layer_outputs[0], base_layer_outputs[1], base_layer_outputs[2], 
+                          this->prev_hidden_state);
+        
+        // 现在多层特征已准备好，可以执行eagle_prefill（如果需要）
+        if (num_history_tokens > 0) {
+            this->eagle_prefill(num_history_tokens);
+        }
+        
+        cudaCheck(cudaMemcpy(this->eagle_position_ids, position_ids, num_tokens * sizeof(int32_t), cudaMemcpyDeviceToDevice));
         this->num_prev = num_tokens;
 
         this->num_history_tokens = num_history_tokens;
@@ -529,9 +574,12 @@ struct Eagle3Impl : Model {
     void update_multi_hidden_states(T* multi_hidden_states, int32_t num_tokens) {
         // 保存Base Model传来的multi hidden states供后续使用
         // 维度: num_tokens * hidden_size * 3 = num_tokens * 12288
-        cudaMemcpy(this->base_model_hidden_states, multi_hidden_states, 
-                   num_tokens * this->model->hidden_size * num_feature_layers * sizeof(T), 
-                   cudaMemcpyDeviceToDevice);
+        // 直接复制，因为multi_hidden_states已经是拼接好的连续内存
+        cudaCheck(cudaMemcpy(this->base_model_hidden_states, multi_hidden_states,
+                             num_tokens * this->model->hidden_size * num_feature_layers * sizeof(T),
+                             cudaMemcpyDeviceToDevice));
+        // 标记数据为有效
+        this->base_model_hidden_states_valid = true;
     }
 
     /**
@@ -569,18 +617,21 @@ struct Eagle3Impl : Model {
      * @param tree_parent       输出的父节点索引数组
      */
     void draft(int32_t* tree_draft_ids, int32_t* tree_position_ids, int32_t* cache_length, uint64_t* tree_attn_mask, int32_t* tree_parent) {
-        cudaMemcpy(this->eagle_original_length, cache_length, sizeof(int32_t), cudaMemcpyDeviceToHost);
+        cudaCheck(cudaMemcpy(this->eagle_original_length, cache_length, sizeof(int32_t), cudaMemcpyDeviceToHost));
         this->eagle_padded_length = (this->eagle_original_length[0] + 256 - 1) / 128 * 128;
 
 
         if (this->is_first_draft) {
-            this->model->embedding->prefill(calc_stream, 1, tree_draft_ids);
+            // 注意：第一次draft时，我们已经有了prev_embed，不需要重新embedding
+            // tree_draft_ids[0]还没有被设置，不应该使用它
+            // this->model->embedding->prefill(calc_stream, 1, tree_draft_ids);  // BUG: tree_draft_ids[0]未初始化
+            
             this->eagle_prefill(this->num_history_tokens);
         } else {
             this->eagle_decode(cache_length);
         }
-        cudaMemcpy(this->eagle_cache_length, cache_length, sizeof(int32_t), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(this->eagle_position_ids, cache_length, sizeof(int32_t), cudaMemcpyDeviceToDevice);
+        cudaCheck(cudaMemcpy(this->eagle_cache_length, cache_length, sizeof(int32_t), cudaMemcpyDeviceToDevice));
+        cudaCheck(cudaMemcpy(this->eagle_position_ids, cache_length, sizeof(int32_t), cudaMemcpyDeviceToDevice));
         repeat(calc_stream, topk_per_iter, 1, 0, this->eagle_position_ids);
 
         { // d = 0: 第一层候选生成
@@ -590,17 +641,21 @@ struct Eagle3Impl : Model {
             this->topk_func->prefill(calc_stream, 1, this->eagle_logits);
             
             // 保存第一轮的top-k结果
-            cudaMemcpy(this->topk_func_2->topk_pos, this->topk_func->topk_pos, topk_per_iter * sizeof(int32_t), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(this->topk_func_2->topk_val, this->topk_func->topk_val, topk_per_iter * sizeof(T), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(this->tried_history_val, this->topk_func->topk_val, topk_per_iter * sizeof(T), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(this->tried_history_pos, this->topk_func->topk_pos, topk_per_iter * sizeof(int32_t), cudaMemcpyDeviceToDevice);
+        cudaCheck(cudaMemcpy(this->topk_func_2->topk_pos, this->topk_func->topk_pos, topk_per_iter * sizeof(int32_t), cudaMemcpyDeviceToDevice));
+        cudaCheck(cudaMemcpy(this->topk_func_2->topk_val, this->topk_func->topk_val, topk_per_iter * sizeof(T), cudaMemcpyDeviceToDevice));
+        cudaCheck(cudaMemcpy(this->tried_history_val, this->topk_func->topk_val, topk_per_iter * sizeof(T), cudaMemcpyDeviceToDevice));
+        cudaCheck(cudaMemcpy(this->tried_history_pos, this->topk_func->topk_pos, topk_per_iter * sizeof(int32_t), cudaMemcpyDeviceToDevice));
             // 注意：tried_history_pos保存的是draft token id，不进行映射
             // 映射只在最后构建树时进行
             
             // 复制hidden state给每个候选
             repeat(calc_stream, topk_per_iter, this->model->hidden_size, num_prev-1, this->fc->output, this->fc->output);
+            
             // 初始化树的mask（每个候选独立）
             init_tree(calc_stream, topk_per_iter, this->eagle_mask_2d);
+            
+            this->num_prev = topk_per_iter;
+            this->eagle_decode(this->eagle_cache_length);
         }
         // 迭代扩展树结构
         for (int d = 1; d < this->num_iter; ++d) {
@@ -609,10 +664,11 @@ struct Eagle3Impl : Model {
             // Eagle3: Use eagle's own embeddings for new candidate tokens
             this->eagle_embeddings->prefill(calc_stream, topk_per_iter, this->topk_func_2->topk_pos);
             
-            // 递归处理：调用Eagle3Layer的特殊decode方法
+            // 递归处理：使用上一轮EA Layer的输出作为当前轮的hidden states输入
+            // Eagle3Layer内部会对fc->output进行hidden_norm归一化，然后与embedding拼接
             this->eagle_layer->decode(topk_per_iter, this->eagle_padded_length, 
-                                      this->eagle_embeddings->output,  // 新的embedding: 4096维
-                                      this->fc->output,                // 上一轮的hidden states: 4096维
+                                      this->eagle_embeddings->output,  // embedding: 4096维
+                                      this->fc->output,                // fc_output: 4096维（未归一化）
                                       this->eagle_position_ids, this->eagle_cache_length, 
                                       Mask(eagle_mask_2d, topk_per_iter, topk_per_iter * d), 
                                       this->kv_caches->caches[0],
@@ -640,16 +696,16 @@ struct Eagle3Impl : Model {
             cumsum(calc_stream, topk_per_iter, topk_per_iter, this->topk_func->topk_val, this->topk_func_2->topk_val);
             
             // 保存本轮所有候选
-            cudaMemcpy(this->tried_history_val + topk_per_iter + (d - 1) * topk_per_iter * topk_per_iter, this->topk_func->topk_val, topk_per_iter * topk_per_iter * sizeof(T), cudaMemcpyDeviceToDevice);
+            cudaCheck(cudaMemcpy(this->tried_history_val + topk_per_iter + (d - 1) * topk_per_iter * topk_per_iter, this->topk_func->topk_val, topk_per_iter * topk_per_iter * sizeof(T), cudaMemcpyDeviceToDevice));
             
             // 保存draft token id，不进行映射
-            cudaMemcpy(this->tried_history_pos + topk_per_iter + (d - 1) * topk_per_iter * topk_per_iter, this->topk_func->topk_pos, topk_per_iter * topk_per_iter * sizeof(int32_t), cudaMemcpyDeviceToDevice);
+            cudaCheck(cudaMemcpy(this->tried_history_pos + topk_per_iter + (d - 1) * topk_per_iter * topk_per_iter, this->topk_func->topk_pos, topk_per_iter * topk_per_iter * sizeof(int32_t), cudaMemcpyDeviceToDevice));
             
             // 从累积的候选中选择最好的topk_per_iter个
             this->topk_func_2->prefill(calc_stream, 1, this->topk_func->topk_val, topk_per_iter * topk_per_iter, topk_per_iter);
 
             // 更新树结构：mask和parent关系
-            cudaMemcpy(this->tmp_mask_2d, this->eagle_mask_2d, topk_per_iter * sizeof(uint64_t), cudaMemcpyDeviceToDevice);
+            cudaCheck(cudaMemcpy(this->tmp_mask_2d, this->eagle_mask_2d, topk_per_iter * sizeof(uint64_t), cudaMemcpyDeviceToDevice));
             set_parent(calc_stream, topk_per_iter, this->tried_history_parent + (d - 1) * topk_per_iter, this->topk_func_2->topk_pos, topk_per_iter + (d - 1) * topk_per_iter * topk_per_iter);
             update_tree(calc_stream, topk_per_iter, topk_per_iter * d, this->eagle_mask_2d, this->tmp_mask_2d, this->topk_func_2->topk_pos);
             
@@ -670,6 +726,8 @@ struct Eagle3Impl : Model {
         // 如果使用了词汇表映射，将draft token id映射回target token id
         if (need_vocab_mapping && d2t_mapping != nullptr) {
             vocab_mapping(calc_stream, this->tree_size-1, tree_draft_ids + 1, d2t_mapping, tree_draft_ids + 1);
+            // Sync to ensure vocab mapping is complete
+            cudaCheck(cudaStreamSynchronize(calc_stream.stream));
         }
 
         // 标记已完成第一次草稿生成
@@ -706,17 +764,46 @@ struct Eagle3Impl : Model {
      */
     int verify(int32_t num_tokens, int32_t* pred, int32_t* gt, int32_t* position_ids, int32_t* cache_length, uint64_t* mask_2d, int32_t* tree_parent) {
         verify_draft(calc_stream, num_tokens, pred, gt, position_ids, cache_length, mask_2d, tree_parent, this->d_best);
-        cudaMemcpyAsync(this->h_best, this->d_best, 2 * sizeof(int32_t), cudaMemcpyDeviceToHost, calc_stream.stream);
-        cudaStreamSynchronize(calc_stream.stream);
+        cudaCheck(cudaMemcpyAsync(this->h_best, this->d_best, 2 * sizeof(int32_t), cudaMemcpyDeviceToHost, calc_stream.stream));
+        cudaCheck(cudaStreamSynchronize(calc_stream.stream));
 
         this->num_prev = h_best[0];
-        remap_hidden(calc_stream, this->num_prev, this->model->hidden_size, pred, this->model->norm->output, this->prev_hidden_state);
+        
+        // 获取base model在tree verification后的多层特征
+        const T* const* base_layer_outputs = this->model->get_eagle3_layer_outputs();
+        if (base_layer_outputs == nullptr) {
+            throw std::runtime_error("get_eagle3_layer_outputs returned nullptr in verify");
+        }
+        
+        // 拼接三层特征: [num_prev, 4096] x 3 -> [num_prev, 12288]
+        multi_layer_concat(calc_stream, this->num_prev, this->model->hidden_size, 
+                          base_layer_outputs[0], base_layer_outputs[1], base_layer_outputs[2], 
+                          this->multi_layer_features);
+        
+        // 使用拼接后的12288维特征进行remap
+        remap_hidden(calc_stream, this->num_prev, this->model->hidden_size * 3, pred, this->multi_layer_features, this->prev_hidden_state);
 
         // 修复基础模型的KV cache（EAGLE3与EAGLE2使用完全相同的KV cache处理）
+        // Check pointers before calling fix_kv_cache
+        if (this->model->kv_caches->d_flat_caches == nullptr) {
+            throw std::runtime_error("d_flat_caches not initialized");
+        }
+        if (this->tmp_kvcache == nullptr) {
+            throw std::runtime_error("tmp_kvcache not initialized");
+        }
+        
         fix_kv_cache(calc_stream, h_best[0], this->model->kv_caches->num_hidden_layers * 2, this->model->kv_caches->dim, pred, gt, cache_length, this->model->kv_caches->d_flat_caches, this->tmp_kvcache);
+        
+        // 修复Eagle3自己的KV cache（只有1层）
+        if (this->kv_caches->d_flat_caches != nullptr) {
+            // Eagle3有自己的临时KV cache buffer，需要单独分配
+            // 这里我们复用部分tmp_kvcache，但偏移到不同的位置
+            T* eagle_tmp_kvcache = this->tmp_kvcache + (64 * this->model->num_hidden_layers * 2 * this->kv_caches->dim);
+            fix_kv_cache(calc_stream, h_best[0], 1 * 2, this->kv_caches->dim, pred, gt, cache_length, this->kv_caches->d_flat_caches, eagle_tmp_kvcache);
+        }
 
         this->model->embedding->prefill(calc_stream, this->num_prev, pred);
-        cudaMemcpy(this->prev_embed, this->model->embedding->output, this->num_prev * this->model->hidden_size * sizeof(T), cudaMemcpyDeviceToDevice);
+        cudaCheck(cudaMemcpy(this->prev_embed, this->model->embedding->output, this->num_prev * this->model->hidden_size * sizeof(T), cudaMemcpyDeviceToDevice));
 
         make_arange(calc_stream, this->num_prev, cache_length, this->eagle_position_ids);
 

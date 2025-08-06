@@ -47,6 +47,10 @@ struct ModelImpl : Model {
     LMHead<T>* lm_head;
     float residual_scale;
 
+    // params and impls only for eagle3
+    int save_layer_indices[3] = {2, 16, 29};  // 需要保存的层索引
+    T* saved_layer_states[3];        // 保存Layer 2, 16, 29的输出
+
     ModelImpl(
         float memory_limit,
         int vocab_size,
@@ -77,6 +81,7 @@ struct ModelImpl : Model {
         this->residual_scale = scale_residual;
         this->use_qk_norm = use_qk_norm;
         this->use_attn_bias = use_attn_bias;
+        
         
         memory = new Memory(memory_limit);
 
@@ -177,8 +182,6 @@ struct ModelImpl : Model {
 
     void draft(int32_t *tree_draft_ids, int32_t *tree_position_ids, int32_t *cache_length, uint64_t* attn_mask, int32_t* tree_parent) { throw std::runtime_error("Draft is not supported"); }
     int verify(int32_t num_tokens, int32_t* pred, int32_t* gt, int32_t* position_ids, int32_t* cache_length, uint64_t* attn_mask, int32_t* tree_parent) { throw std::runtime_error("Verify is not supported"); }
-    // params and impls only for eagle3
-    int save_layer_indices[3] = {2, 16, 29};  // 需要保存的层索引
 
     // 返回指定三层的hidden states的只读指针数组，单次prefill/decode layer->output是持久化的，直到下一次decode覆盖
     const T* const* get_eagle3_layer_outputs() const {

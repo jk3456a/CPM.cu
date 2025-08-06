@@ -28,11 +28,15 @@ struct Eagle3Layer {
     }
 
     int64_t init_output_ptr(Memory* memory, int32_t num_tokens, int64_t offset) {
+        // attn和ffn共享内存（标准做法）
         int64_t attn_end = this->attn->init_output_ptr(memory, num_tokens, offset);
         int64_t ffn_end = this->ffn->init_output_ptr(memory, num_tokens, offset);
         this->output = this->ffn->output;
-        int64_t hidden_norm_end = this->hidden_norm->init_output_ptr(memory, num_tokens, offset);
-        return std::max({attn_end, ffn_end, hidden_norm_end});
+        
+        // hidden_norm需要独立内存
+        int64_t shared_end = std::max(attn_end, ffn_end);
+        int64_t hidden_norm_end = this->hidden_norm->init_output_ptr(memory, num_tokens, shared_end);
+        return hidden_norm_end;
     }
 
     void load_to_storage(std::string name, void* ptr) {
@@ -82,7 +86,7 @@ struct Eagle3Layer {
                 int32_t* position_ids, int32_t* cache_length, const Mask& mask, 
                 KVCache<T>* kv_cache, T* concat_buffer) {
         // 1. 对FC输出应用hidden_norm归一化
-        this->hidden_norm->decode(calc_stream, num_tokens, fc_output, nullptr);
+        this->hidden_norm->prefill(calc_stream, num_tokens, fc_output, nullptr);
         
         // 2. 拼接embedding和归一化后的hidden_states为8192维
         concat_embeddings_and_hidden(calc_stream, num_tokens, this->hidden_size,

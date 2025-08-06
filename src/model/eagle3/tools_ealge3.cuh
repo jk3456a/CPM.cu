@@ -90,6 +90,7 @@ void concat_embeddings_and_hidden(const Stream& stream, int32_t num_tokens,
     
     concat_embeddings_hidden_kernel<<<grid_size, block_size, 0, stream.stream>>>(
         num_tokens, hidden_size, embeddings, hidden_states, output);
+    cudaCheck(cudaGetLastError());
 }
 
 
@@ -102,6 +103,7 @@ void multi_layer_concat(const Stream& stream, int32_t num_tokens, int32_t hidden
     int grid_size = (total_elements + block_size - 1) / block_size;
     multi_layer_concat_kernel<<<grid_size, block_size, 0, stream.stream>>>(
         num_tokens, hidden_size, 3, layer0, layer1, layer2, output);
+    cudaCheck(cudaGetLastError());
 }
 
 // EAGLE3特化的词汇表映射封装
@@ -111,4 +113,5 @@ void vocab_mapping(const Stream& stream, int32_t num_tokens, const int32_t* draf
     int grid_size = (num_tokens + block_size - 1) / block_size;
     vocab_mapping_kernel<<<grid_size, block_size, 0, stream.stream>>>(
         num_tokens, draft_token_ids, d2t_mapping, target_token_ids);
+    cudaCheck(cudaGetLastError());
 }
