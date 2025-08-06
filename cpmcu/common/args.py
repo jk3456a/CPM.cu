@@ -54,6 +54,9 @@ def add_model_config_args(parser: argparse.ArgumentParser):
 
     # Speculative Decoding
     spec_group = parser.add_argument_group('Speculative Decoding')
+    spec_group.add_argument('--spec-type', '--spec_type', type=str, default='eagle2',
+                           choices=['eagle2', 'eagle3'],
+                           help='Speculative decoding type (default: eagle2, only effective when draft model is provided)')
     spec_group.add_argument('--spec-window-size', '--spec_window_size', type=int, default=1024,
                            help='Speculative decoding slidingwindow size (default: 1024)')
     spec_group.add_argument('--spec-num-iter', '--spec_num_iter', type=int, default=2,

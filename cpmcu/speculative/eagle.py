@@ -30,6 +30,7 @@ class LLM_with_eagle(LLM_with_tree_drafter):
                  use_rope: bool=False,
                  use_input_norm: bool=False,
                  use_attn_norm: bool=False,
+                 eagle_version: int=2,
                  **kwargs):
         super().__init__(
             "eagle", eagle_path, base_path,
@@ -39,6 +40,7 @@ class LLM_with_eagle(LLM_with_tree_drafter):
 
         self.eagle_path = eagle_path
         self.eagle_config = EagleConfig.from_pretrained(eagle_path)
+        self.eagle_version = eagle_version
         
         # For Qwen3, head_dim is explicitly specified in config and may not equal hidden_size // num_attention_heads
         if not hasattr(self.eagle_config, "head_dim"):
@@ -63,10 +65,9 @@ class LLM_with_eagle(LLM_with_tree_drafter):
         assert self.group_size == 128 or self.group_size == 0, "only group_size 128 is supported in quantization mode"
 
         # Check if this is Eagle3
-        eagle_version = getattr(self.eagle_config, 'eagle_version', 2)
         draft_vocab_size = getattr(self.eagle_config, 'draft_vocab_size', 0) or 0
         
-        if eagle_version == 3:
+        if self.eagle_version == 3:
             # Eagle3 initialization
             C.init_eagle3_model(
                 self.eagle_config.intermediate_size,
@@ -116,39 +117,35 @@ class LLM_with_eagle(LLM_with_tree_drafter):
 
     def _load(self, name, param, dtype=None, cls=None):
         if cls == self.drafter_type:
-            eagle_version = getattr(self.eagle_config, 'eagle_version', 2)
             
             if name == "token_id_remap":
                 C.load_model(f"{cls}.{name}", param.data_ptr())
                 return
-            if name == "d2t" or name == "t2d":
-                # Eagle3 vocab mapping
-                if eagle_version == 3:
-                    C.load_model(f"{cls}.{name}", param.data_ptr())
-                return
-                
             if dtype is None:
                 dtype = self.dtype
             param = param.contiguous()
             if not self.apply_eagle_quant:
                 param = param.to(dtype)
                 
-            if eagle_version == 3:
+            if self.eagle_version == 3:
                 # Eagle3 specific loading
-                if 'embed_tokens' in name:
-                    C.load_model(f"{cls}.{name}", param.data_ptr())
+                if 'd2t' in name:
+                    C.load_model(f"{name}", param.data_ptr())
+                    return
+                elif 't2d' in name:
+                    return 
                 elif 'lm_head' in name:
-                    C.load_model(f"{cls}.{name}", param.data_ptr())
+                    C.load_model(f"{name}", param.data_ptr())
                 elif 'norm' in name:
-                    C.load_model(f"{cls}.{name}", param.data_ptr())
+                    C.load_model(f"{name}", param.data_ptr())
                 elif 'fc' in name and not ('fc1' in name or 'fc2' in name):
                     # Eagle3 uses single fc layer
-                    C.load_model(f"{cls}.{name}", param.data_ptr())
+                    C.load_model(f"{name}", param.data_ptr())
                 elif 'midlayer' in name:
                     # Handle midlayer weights
-                    C.load_model(f"{cls}.{name}", param.data_ptr())
+                    C.load_model(f"{name}", param.data_ptr())
                 else:
-                    C.load_model(f"{cls}.{name}", param.data_ptr())
+                    C.load_model(f"{name}", param.data_ptr())
             else:
                 # Eagle2 loading logic
                 if 'embed_tokens' in name:

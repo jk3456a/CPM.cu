@@ -141,20 +141,23 @@ def create_model(model_path, draft_model_path, config):
             'apply_eagle_quant': draft_model_quantized,
             'use_rope': config.get('model_type') in ['minicpm', 'minicpm4'],
             'use_input_norm': config.get('model_type') in ['minicpm', 'minicpm4'],
-            'use_attn_norm': config.get('model_type') in ['minicpm', 'minicpm4']
+            'use_attn_norm': config.get('model_type') in ['minicpm', 'minicpm4'],
+            'eagle_version': 2 if config.get('spec_type', 'eagle2') == 'eagle2' else 3
         }
         
         # Create model based on configuration
         if base_model_quantized:
             if has_draft_model:
-                logger.info("Creating [yellow]quantized model[/yellow] with [green]Eagle speculative decoding[/green]")
+                eagle_version = spec_kwargs['eagle_version']
+                logger.info(f"Creating [yellow]quantized model[/yellow] with [green]Eagle{eagle_version} speculative decoding[/green]")
                 return W4A16GPTQMarlinLLM_with_eagle(draft_model_path, model_path, **common_kwargs, **spec_kwargs)
             else:
                 logger.info("Creating [yellow]quantized model[/yellow]")
                 return W4A16GPTQMarlinLLM(model_path, **common_kwargs)
         else:
             if has_draft_model:
-                logger.info("Creating model with [green]Eagle speculative decoding[/green]")
+                eagle_version = spec_kwargs['eagle_version']
+                logger.info(f"Creating model with [green]Eagle{eagle_version} speculative decoding[/green]")
                 return LLM_with_eagle(draft_model_path, model_path, **common_kwargs, **spec_kwargs)
             else:
                 logger.info("Creating [cyan]standard model[/cyan]")

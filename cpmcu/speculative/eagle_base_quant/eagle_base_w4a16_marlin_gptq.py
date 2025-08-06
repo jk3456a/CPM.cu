@@ -20,6 +20,7 @@ class W4A16GPTQMarlinLLM_with_eagle(W4A16GPTQMarlinLLM_with_tree_drafter):
                  use_input_norm: bool=False,
                  use_attn_norm: bool=False,
                  use_rotation: bool=False,
+                 eagle_version: int=2,
                  **kwargs):
         super().__init__(
             "eagle", eagle_path, base_path,
@@ -29,6 +30,11 @@ class W4A16GPTQMarlinLLM_with_eagle(W4A16GPTQMarlinLLM_with_tree_drafter):
 
         self.eagle_path = eagle_path
         self.eagle_config = EagleConfig.from_pretrained(eagle_path)
+        self.eagle_version = eagle_version
+        
+        # Currently only Eagle2 is supported in quantized mode
+        if self.eagle_version != 2:
+            raise NotImplementedError(f"Eagle{self.eagle_version} is not supported in quantized mode. Only Eagle2 is supported.")
         
         # For Qwen3, head_dim is explicitly specified in config and may not equal hidden_size // num_attention_heads
         if not hasattr(self.eagle_config, "head_dim"):
