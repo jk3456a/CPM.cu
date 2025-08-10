@@ -51,6 +51,11 @@ struct MiniCPM4EagleImpl : Model {
     MiniCPM4EagleImpl(
         ModelType* model,
         int num_layers,
+        int intermediate_size,
+        int num_attention_heads,
+        int num_key_value_heads,
+        int head_dim,
+        float rms_norm_eps,
         int num_iter,
         int topk_per_iter,
         int tree_size,
@@ -73,23 +78,23 @@ struct MiniCPM4EagleImpl : Model {
         this->use_input_norm = use_input_norm;
         this->use_attn_norm = use_attn_norm;
 
-        kv_caches = new KVCacheManager<T>(num_layers, this->model->num_key_value_heads, this->model->head_dim);
-        if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T, true, true>>) {
-            fc1 = new W4A16GPTQMarlinLinear<T, true, true>(this->model->hidden_size, this->model->hidden_size, group_size);
+        kv_caches = new KVCacheManager<T>(num_layers, num_key_value_heads, head_dim);
+        if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T>>) {
+            fc1 = new W4A16GPTQMarlinLinear<T>(this->model->hidden_size, this->model->hidden_size, group_size, true, true);
             fc2 = new W4A16GPTQMarlinLinear<T>(this->model->hidden_size, this->model->hidden_size, group_size);
         } else {
-            fc1 = new Linear<T, true, true>(this->model->hidden_size, this->model->hidden_size);
+            fc1 = new Linear<T>(this->model->hidden_size, this->model->hidden_size, true, true);
             fc2 = new Linear<T>(this->model->hidden_size, this->model->hidden_size);
         }
         if (use_input_norm) {
-            input_norm1 = new RMSNorm<T>(this->model->hidden_size, this->model->rms_norm_eps);
-            input_norm2 = new RMSNorm<T>(this->model->hidden_size, this->model->rms_norm_eps);
+            input_norm1 = new RMSNorm<T>(this->model->hidden_size, rms_norm_eps);
+            input_norm2 = new RMSNorm<T>(this->model->hidden_size, rms_norm_eps);
         }
         for (int i = 0; i < num_layers; i++) {
             if constexpr (std::is_same_v<LayerType, W4A16GPTQMarlinLayer<T>>) {
-                layers.push_back(new W4A16GPTQMarlinLayer<T>(this->model->hidden_size, this->model->intermediate_size, this->model->num_attention_heads, this->model->num_key_value_heads, this->model->head_dim, this->model->rms_norm_eps, group_size, this->residual_scale, eagle_window_size));
+                layers.push_back(new W4A16GPTQMarlinLayer<T>(this->model->hidden_size, intermediate_size, num_attention_heads, num_key_value_heads, head_dim, rms_norm_eps, group_size, this->residual_scale, eagle_window_size));
             } else {
-                layers.push_back(new Layer<T>(this->model->hidden_size, this->model->intermediate_size, this->model->num_attention_heads, this->model->num_key_value_heads, this->model->head_dim, this->model->rms_norm_eps, this->residual_scale, eagle_window_size));
+                layers.push_back(new Layer<T>(this->model->hidden_size, intermediate_size, num_attention_heads, num_key_value_heads, head_dim, rms_norm_eps, this->residual_scale, eagle_window_size));
             }
         }
         if (this->frspec_vocab_size != this->model->vocab_size) {
@@ -125,7 +130,7 @@ struct MiniCPM4EagleImpl : Model {
     }
 
     int64_t init_output_ptr(Memory* memory, int32_t num_tokens, int64_t offset) {
-        if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T, true, true>>) {
+        if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T>>) {
             offset = memory->allocate((void**)&this->a_tmp, offset, 2 * num_tokens * this->model->hidden_size * sizeof(T));
             int reduce_max_m = marlin::determine_reduce_max_m(num_tokens, marlin::max_par);
             int reduce_n = 2 * this->model->hidden_size;
@@ -156,7 +161,7 @@ struct MiniCPM4EagleImpl : Model {
         cudaMallocHost(&eagle_original_length, sizeof(int32_t));
 
         offset = topk_func->init_output_ptr(memory, this->topk_per_iter, offset);
-        offset = topk_func_2->init_output_ptr(memory, 1*16, offset);
+        offset = topk_func_2->init_output_ptr(memory, 1, offset);
 
         offset = memory->allocate((void**)&prev_hidden_state, offset, num_tokens * this->model->hidden_size * sizeof(T));
         offset = memory->allocate((void**)&prev_embed, offset, num_tokens * this->model->hidden_size * sizeof(T));
@@ -225,7 +230,7 @@ struct MiniCPM4EagleImpl : Model {
         if (use_input_norm) {
             this->input_norm1->prefill(calc_stream, num_prev, this->prev_embed, nullptr);
             this->input_norm2->prefill(calc_stream, num_prev, this->prev_hidden_state, nullptr);
-            if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T, true, true>>) {
+            if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T>>) {
                 this->fc1->prefill(calc_stream, num_prev, this->input_norm1->output, this->a_tmp, this->c_tmp);
                 this->fc2->prefill(calc_stream, num_prev, this->input_norm2->output, this->a_tmp, this->c_tmp);
             } else {
@@ -233,7 +238,7 @@ struct MiniCPM4EagleImpl : Model {
                 this->fc2->prefill(calc_stream, num_prev, this->input_norm2->output);
             }
         } else {
-            if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T, true, true>>) {
+            if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T>>) {
                 this->fc1->prefill(calc_stream, num_prev, this->prev_embed, this->a_tmp, this->c_tmp);
                 this->fc2->prefill(calc_stream, num_prev, this->prev_hidden_state, this->a_tmp, this->c_tmp);
             } else {
@@ -255,7 +260,7 @@ struct MiniCPM4EagleImpl : Model {
         if (use_input_norm) {
             this->input_norm1->prefill(calc_stream, num_prev, this->prev_embed, nullptr);
             this->input_norm2->prefill(calc_stream, num_prev, this->prev_hidden_state, nullptr);
-            if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T, true, true>>) {
+            if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T>>) {
                 this->fc1->prefill(calc_stream, num_prev, this->input_norm1->output, this->a_tmp, this->c_tmp);
                 this->fc2->prefill(calc_stream, num_prev, this->input_norm2->output, this->a_tmp, this->c_tmp);
             } else {
@@ -263,7 +268,7 @@ struct MiniCPM4EagleImpl : Model {
                 this->fc2->prefill(calc_stream, num_prev, this->input_norm2->output);
             }
         } else {
-            if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T, true, true>>) {
+            if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T>>) {
                 this->fc1->prefill(calc_stream, num_prev, this->prev_embed, this->a_tmp, this->c_tmp);
                 this->fc2->prefill(calc_stream, num_prev, this->prev_hidden_state, this->a_tmp, this->c_tmp);
             } else {
@@ -337,7 +342,7 @@ struct MiniCPM4EagleImpl : Model {
             if (use_input_norm) {
                 this->input_norm1->prefill(calc_stream, topk_per_iter, this->model->embedding->output, nullptr);
                 this->input_norm2->prefill(calc_stream, topk_per_iter, this->fc1->output, nullptr);
-                if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T, true, true>>) {
+                if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T>>) {
                     this->fc1->prefill(calc_stream, topk_per_iter, this->input_norm1->output, this->a_tmp, this->c_tmp);
                     this->fc2->prefill(calc_stream, topk_per_iter, this->input_norm2->output, this->a_tmp, this->c_tmp);
                 } else {
@@ -345,7 +350,7 @@ struct MiniCPM4EagleImpl : Model {
                     this->fc2->prefill(calc_stream, topk_per_iter, this->input_norm2->output);
                 }
             } else {
-                if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T, true, true>>) {
+                if constexpr (std::is_same_v<Fc1Type, W4A16GPTQMarlinLinear<T>>) {
                     this->fc2->prefill(calc_stream, topk_per_iter, this->fc1->output, this->a_tmp, this->c_tmp);
                     this->fc1->prefill(calc_stream, topk_per_iter, this->model->embedding->output, this->a_tmp, this->c_tmp);
                 } else {

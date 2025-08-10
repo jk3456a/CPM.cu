@@ -7,6 +7,8 @@ from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
 from safetensors.torch import load_file
 import time, math
 import torch.nn.functional as F
+from .common.logging import logger
+
 
 dtype_map = {
     torch.float16: 0,
@@ -31,9 +33,9 @@ class LLM(torch.nn.Module):
                  block_window_size: int = 32,
                  sparse_topk_k: int = 32,
                  sparse_switch: int = 8192,
-                 apply_compress_lse: bool = False,
-                 use_enter: bool = False,
-                 use_decode_enter: bool = False,
+                 use_compress_lse: bool = False,
+                 use_qk_norm: bool = False,
+                 use_attn_bias: bool = False,
                  temperature: float = 0.0,
                  random_seed: int = None,
     ):
@@ -45,13 +47,9 @@ class LLM(torch.nn.Module):
         self.dtype = dtype if dtype is not None else self.config.torch_dtype
         self.dtype_int = dtype_to_int(self.dtype)
         self.cuda_graph = cuda_graph
-        self.use_enter = use_enter
-        self.use_decode_enter = use_decode_enter
         self.temperature = temperature
 
         self.chunk_length = chunk_length
-        # Flag for showing prefill progress (used in stream mode)
-        self._show_prefill_progress = False
         
         # Initialize random generator if random_seed is provided
         if random_seed is not None:
@@ -60,8 +58,12 @@ class LLM(torch.nn.Module):
         else:
             self.generator = None
         
+        # For Qwen3, head_dim is explicitly specified in config and may not equal hidden_size // num_attention_heads
         if not hasattr(self.config, "head_dim"):
             self.config.head_dim = self.config.hidden_size // self.config.num_attention_heads
+        else:
+            # Qwen3 models have explicit head_dim that might be different
+            logger.info(f"Using explicit head_dim from config: {self.config.head_dim}")
         scale_embed = self.config.scale_emb if hasattr(self.config, "scale_emb") else 1.0
         scale_lmhead = (self.config.dim_model_base / self.config.hidden_size) if hasattr(self.config, "dim_model_base") else 1.0
         scale_residual = self.config.scale_depth / math.sqrt(self.config.num_hidden_layers) if hasattr(self.config, "scale_depth") else 1.0
@@ -86,7 +88,7 @@ class LLM(torch.nn.Module):
                 block_window_size,
                 sparse_topk_k,
                 sparse_switch,
-                apply_compress_lse,
+                use_compress_lse,
             )
         else:
             C.init_base_model(
@@ -104,13 +106,14 @@ class LLM(torch.nn.Module):
                 scale_embed,
                 scale_lmhead,
                 scale_residual,
+                use_qk_norm,
+                use_attn_bias,
             )
 
         self.logits = torch.empty((64, self.config.vocab_size), dtype=self.dtype, device="cuda")
 
     def init_storage(self):
         self.max_total_length = C.init_storage()
-        print("max supported length under current memory limit: ", self.max_total_length)
 
     def _load(self, name, param, dtype=None, cls=None):
         if dtype is None:
@@ -163,7 +166,7 @@ class LLM(torch.nn.Module):
             file_list = [file]
 
         for file in file_list:
-            print(f"load from {file}")
+            logger.info(f"load from {file}")
             if file.endswith(".bin") or file.endswith(".pt"):
                 ckpt = torch.load(file, map_location="cpu")
             elif file.endswith(".safetensors"):
@@ -188,7 +191,7 @@ class LLM(torch.nn.Module):
             self._load("model.rotary_emb.inv_freq", inv_freq, dtype=torch.float32)
             # self._load("model.rotary_emb.attention_scaling", attention_scaling, dtype=torch.float32)
 
-    def prefill(self, input_ids, position_ids):
+    def prefill(self, input_ids, position_ids, progress_callback=None):
         assert input_ids.dtype == torch.int32
         # Check if input length exceeds maximum supported length
         if input_ids.numel() > self.max_total_length:
@@ -197,34 +200,11 @@ class LLM(torch.nn.Module):
         total_length = input_ids.numel()
         num_chunks = (total_length + self.chunk_length - 1) // self.chunk_length
         
-        prefill_start_time = None
-        actual_prefill_start = None
+        actual_prefill_start = time.time()
         
-        # User interaction logic only when use_enter is True
-        if self._show_prefill_progress and self.use_enter:
-            # Clear screen and move cursor to top, then show prompt and wait for user input
-            print("\033[2J\033[H", end="", flush=True)  # Clear screen and move to top
-            print("Please Press Enter to Start Prefilling...", end="", flush=True)
-            input()  # Wait for Enter key
-            
-            # Replace the prompt with [Prefilling] - clear entire line first
-            print("\r" + " " * 50 + "\r[Prefilling]", flush=True)
-            # Start timing after user presses Enter
-            prefill_start_time = time.time()
-            actual_prefill_start = prefill_start_time
-        
-        # Initialize progress display for stream mode (always when _show_prefill_progress is True)
-        if self._show_prefill_progress:
-            if prefill_start_time is None:  # Only set start time if not already set above
-                prefill_start_time = time.time()
-            if not self.use_enter:
-                print("Prefilling: 0.0% (0/{} tokens) @ 0.0 tokens/s".format(total_length), end="", flush=True)
-            else:
-                print("Prefilling: 0.0% (0/{} tokens) @ 0.0 tokens/s".format(total_length), end="", flush=True)
-        
-        # Record actual computation start time if not set yet
-        if actual_prefill_start is None:
-            actual_prefill_start = time.time()
+        # Initialize progress callback if provided
+        if progress_callback:
+            progress_callback('begin', {'total_tokens': total_length})
         
         for chunk_idx, i in enumerate(range(0, input_ids.numel(), self.chunk_length)):
             # torch.cuda.nvtx.range_push(f"chunk from {i}")
@@ -235,27 +215,17 @@ class LLM(torch.nn.Module):
             )
             # torch.cuda.nvtx.range_pop()
             
-            # Show progress for stream mode - always when _show_prefill_progress is True
-            if self._show_prefill_progress and prefill_start_time is not None:
+            # Update progress via callback
+            if progress_callback:
                 current_tokens = min(i + self.chunk_length, total_length)
-                elapsed_time = time.time() - prefill_start_time
-                progress = (current_tokens * 100.0) / total_length
-                tokens_per_sec = current_tokens / elapsed_time if elapsed_time > 0 else 0.0
-                print(f"\rPrefilling: {progress:.1f}% ({current_tokens}/{total_length} tokens) @ {tokens_per_sec:.1f} tokens/s", end="", flush=True)
+                progress_callback('advance', {'current_tokens': current_tokens})
         
         # Calculate actual prefill time
         actual_prefill_time = time.time() - actual_prefill_start
         
-        # Final completion status for stream mode
-        if self._show_prefill_progress:
-            if prefill_start_time is not None:
-                final_elapsed_time = time.time() - prefill_start_time
-                final_tokens_per_sec = total_length / final_elapsed_time if final_elapsed_time > 0 else 0.0
-                print(f"\rPrefilling: 100.0% ({total_length}/{total_length} tokens) @ {final_tokens_per_sec:.1f} tokens/s - Complete!")
-            if self.use_enter:
-                print("\n[Decoding]")  # Show decoding status and move to next line only with use_enter
-            else:
-                print()  # Just a newline for normal mode
+        # Complete progress via callback
+        if progress_callback:
+            progress_callback('finish', {'total_time': actual_prefill_time})
         
         # Store the actual prefill time for use in generate method
         self._last_prefill_time = actual_prefill_time
@@ -284,7 +254,7 @@ class LLM(torch.nn.Module):
         # torch.cuda.nvtx.range_pop()
         return self.logits[:input_ids.numel()].clone()
 
-    def generate(self, input_ids, generation_length=100, teminators=[], use_stream=False):
+    def generate(self, input_ids, generation_length=100, teminators=[], use_stream=False, progress_callback=None):
         """
         Generate text with optional streaming output.
         Returns (tokens, decode_time, prefill_time) if use_stream=False, or generator yielding {'token', 'text', 'is_finished', 'prefill_time', 'decode_time'} if use_stream=True.
@@ -294,39 +264,17 @@ class LLM(torch.nn.Module):
         prefix_length = input_ids.numel()
         position_ids = torch.arange(prefix_length, dtype=torch.int32, device="cuda")
         
-        # Set progress flag before prefill for stream mode
-        if use_stream:
-            self._show_prefill_progress = True
-        
         # Measure prefill time
-        if self.use_enter and use_stream:
-            # In use_enter mode, timing will be handled inside prefill method
-            logits = self.prefill(input_ids, position_ids)
-            prefill_time = getattr(self, '_last_prefill_time', 0.0)  # Get actual prefill time
-        else:
-            torch.cuda.synchronize()
-            prefill_start = time.time()
-            logits = self.prefill(input_ids, position_ids)
-            torch.cuda.synchronize()
-            prefill_time = time.time() - prefill_start
+        torch.cuda.synchronize()
+        prefill_start = time.time()
+        logits = self.prefill(input_ids, position_ids, progress_callback)
+        torch.cuda.synchronize()
+        prefill_time = time.time() - prefill_start
         
         if self.temperature > 0.0:
             token = torch.multinomial(F.softmax(logits[0]/self.temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
         else:
             token = logits[0].argmax(dim=-1).item()
-
-        # Wait for user input before decode phase if use_decode_enter is enabled
-        if self.use_decode_enter:
-            if use_stream and self.use_enter:
-                # In stream mode with use_enter, we already showed [Decoding], just wait for input
-                print("Please Press Enter to Start Decoding...", end="", flush=True)
-                input()  # Wait for Enter key
-                print("\r" + " " * 50 + "\r", end="", flush=True)  # Clear the prompt without showing [Decoding] again
-            else:
-                # In other modes, show prompt and wait
-                print("Please Press Enter to Start Decoding...", end="", flush=True)
-                input()  # Wait for Enter key
-                print("\r" + " " * 50 + "\r[Decoding]", flush=True)  # Show [Decoding] only when use_enter is not enabled
 
         if not hasattr(self, "input_ids"):
             self.input_ids = torch.tensor([0], dtype=torch.int32, device="cuda")
@@ -341,7 +289,7 @@ class LLM(torch.nn.Module):
                 prev_token = token
                 
                 # yield first token
-                text = self.tokenizer.decode([token], skip_special_tokens=False)
+                text = self.tokenizer.decode([token], skip_special_tokens=True)
                 
                 yield {
                     'token': token,
@@ -370,11 +318,11 @@ class LLM(torch.nn.Module):
                     # For correct spacing, decode with previous token context
                     if prev_token is not None:
                         context_tokens = [prev_token, token]
-                        context_text = self.tokenizer.decode(context_tokens, skip_special_tokens=False)
-                        prev_text = self.tokenizer.decode([prev_token], skip_special_tokens=False)
+                        context_text = self.tokenizer.decode(context_tokens, skip_special_tokens=True)
+                        prev_text = self.tokenizer.decode([prev_token], skip_special_tokens=True)
                         text = context_text[len(prev_text):]
                     else:
-                        text = self.tokenizer.decode([token], skip_special_tokens=False)
+                        text = self.tokenizer.decode([token], skip_special_tokens=True)
                     
                     is_finished = token in teminators or i == generation_length - 2
                     

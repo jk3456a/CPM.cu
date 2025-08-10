@@ -1,6 +1,7 @@
 from ... import C
 from ..eagle import EagleConfig
 from ..tree_drafter_base_quant.tree_drafter_w4a16_gptq_marlin import W4A16GPTQMarlinLLM_with_tree_drafter
+from ...common.logging import logger
 
 import math, torch
 
@@ -28,6 +29,14 @@ class W4A16GPTQMarlinLLM_with_eagle(W4A16GPTQMarlinLLM_with_tree_drafter):
 
         self.eagle_path = eagle_path
         self.eagle_config = EagleConfig.from_pretrained(eagle_path)
+        
+        # For Qwen3, head_dim is explicitly specified in config and may not equal hidden_size // num_attention_heads
+        if not hasattr(self.eagle_config, "head_dim"):
+            self.eagle_config.head_dim = self.eagle_config.hidden_size // self.eagle_config.num_attention_heads
+        else:
+            # Qwen3 models have explicit head_dim that might be different
+            logger.info(f"Using explicit head_dim from eagle config: {self.eagle_config.head_dim}")
+        
         # Ensure presence consistency and equality for scale_depth, dim_model_base, and scale_emb
         for attr in ("scale_depth", "dim_model_base", "scale_emb"):
             base_has = hasattr(self.config, attr)
@@ -48,22 +57,26 @@ class W4A16GPTQMarlinLLM_with_eagle(W4A16GPTQMarlinLLM_with_tree_drafter):
             if not use_rotation:
                 C.init_eagle_model(
                     self.eagle_config.eagle_num_layers,
+                    self.eagle_config.intermediate_size,
+                    self.eagle_config.num_attention_heads,
+                    self.eagle_config.num_key_value_heads,
+                    self.eagle_config.head_dim,
+                    self.eagle_config.rms_norm_eps,
                     num_iter,
                     topk_per_iter,
                     self.tree_size,
                     self.dtype_int
                 )
             else:
-                C.init_eagle_w4a16_gptq_marlin_rot_model(
-                    self.eagle_config.eagle_num_layers,
-                    num_iter,
-                    topk_per_iter,
-                    self.tree_size,
-                    self.dtype_int
-                )
+                raise NotImplementedError("Rotation is not supported in quantization mode")
         else:
             C.init_minicpm4_eagle_model(
                 self.eagle_config.eagle_num_layers,
+                self.eagle_config.intermediate_size,
+                self.eagle_config.num_attention_heads,
+                self.eagle_config.num_key_value_heads,
+                self.eagle_config.head_dim,
+                self.eagle_config.rms_norm_eps,
                 num_iter,
                 topk_per_iter,
                 self.tree_size,

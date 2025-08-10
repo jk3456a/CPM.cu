@@ -13,21 +13,21 @@ struct MiniCPM4W4A16GPTQMarlinAttention {
 
     Norm<T> *attn_norm;
     W4A16GPTQMarlinLinear<T> *qkv_proj;
+    W4A16GPTQMarlinLinear<T> *q_proj, *k_proj, *v_proj; // belong to qkv_proj
     W4A16GPTQMarlinLinear<T> *o_proj;
     T* output;
 
     T* attn_output;
     float *softmax_lse, *softmax_lse_accum, *oaccum;
 
-    T* q_proj_output, *v_proj_output, *k_proj_output; 
     T* permute_qkv_output;
 
     int sink_window_size;
     int block_window_size;
     int sparse_switch;
-    bool apply_compress_lse;
+    bool use_compress_lse;
 
-    MiniCPM4W4A16GPTQMarlinAttention(int hidden_size, int num_attention_heads, int num_key_value_heads, int head_dim, float rms_norm_eps, int group_size, int sink_window_size, int block_window_size, int sparse_switch, bool apply_compress_lse) {
+    MiniCPM4W4A16GPTQMarlinAttention(int hidden_size, int num_attention_heads, int num_key_value_heads, int head_dim, float rms_norm_eps, int group_size, int sink_window_size, int block_window_size, int sparse_switch, bool use_compress_lse) {
         this->hidden_size = hidden_size;
         this->num_attention_heads = num_attention_heads;
         this->num_key_value_heads = num_key_value_heads;
@@ -37,27 +37,35 @@ struct MiniCPM4W4A16GPTQMarlinAttention {
         this->attn_norm = new RMSNorm<T>(hidden_size, rms_norm_eps);
 
         this->qkv_proj = new W4A16GPTQMarlinLinear<T>(hidden_size, (num_attention_heads + 2*num_key_value_heads) * head_dim, group_size);
-        this->o_proj = new W4A16GPTQMarlinLinear<T>(hidden_size, num_attention_heads * head_dim, group_size);
+        this->q_proj = new W4A16GPTQMarlinLinear<T>(hidden_size, num_attention_heads * head_dim, group_size);
+        this->k_proj = new W4A16GPTQMarlinLinear<T>(hidden_size, num_key_value_heads * head_dim, group_size);
+        this->v_proj = new W4A16GPTQMarlinLinear<T>(hidden_size, num_key_value_heads * head_dim, group_size);
+        this->o_proj = new W4A16GPTQMarlinLinear<T>(num_attention_heads * head_dim, hidden_size, group_size);
 
         this->sink_window_size = sink_window_size;
         this->block_window_size = block_window_size;
         this->sparse_switch = sparse_switch;
-        this->apply_compress_lse = apply_compress_lse;
+        this->use_compress_lse = use_compress_lse;
     }
 
     void init_weight_ptr(Memory* memory) {
         this->attn_norm->init_weight_ptr(memory);
         this->qkv_proj->init_weight_ptr(memory);
+        this->q_proj->weight = this->qkv_proj->weight;
+        this->k_proj->weight = this->q_proj->weight + hidden_size * this->num_attention_heads * this->head_dim;
+        this->v_proj->weight = this->k_proj->weight + hidden_size * this->num_key_value_heads * this->head_dim;
         this->o_proj->init_weight_ptr(memory);
     }
 
     int64_t init_output_ptr(Memory* memory, int32_t num_tokens, int64_t offset) {
+        const int32_t max_spec_tokens = std::max(num_tokens, 512);  // Safe upper bound for spec decoding
+        
         int64_t attn_norm_end = this->attn_norm->init_output_ptr(memory, num_tokens, offset);
-        int64_t qkv_proj_end = this->qkv_proj->init_output_ptr(memory, num_tokens, attn_norm_end);
+        int64_t qkv_proj_end = this->qkv_proj->init_output_ptr(memory, max_spec_tokens, attn_norm_end);
 
-        this->q_proj_output = this->qkv_proj->output;
-        this->k_proj_output = this->qkv_proj->output + num_tokens * this->num_attention_heads * this->head_dim;
-        this->v_proj_output = this->qkv_proj->output + num_tokens * (this->num_attention_heads+this->num_key_value_heads) * this->head_dim;
+        this->q_proj->output = this->qkv_proj->output;
+        this->k_proj->output = this->q_proj->output + max_spec_tokens * this->num_attention_heads * this->head_dim;
+        this->v_proj->output = this->k_proj->output + max_spec_tokens * this->num_key_value_heads * this->head_dim;
         int64_t qkv_permute_end = memory->allocate((void**)&this->permute_qkv_output, qkv_proj_end, num_tokens * (this->num_attention_heads + 2*this->num_key_value_heads) * this->head_dim * sizeof(T));
         
         int64_t attn_output_end = memory->allocate((void**)&this->attn_output, offset, num_tokens * this->num_attention_heads * this->head_dim * sizeof(T));
@@ -76,6 +84,12 @@ struct MiniCPM4W4A16GPTQMarlinAttention {
     void load_to_storage(std::string name, void* ptr) {
         if (name.find("qkv_proj") != std::string::npos) {
             this->qkv_proj->load_to_storage(name, ptr);
+        } else if (name.find("q_proj") != std::string::npos) {
+            this->q_proj->load_to_storage(name, ptr);
+        } else if (name.find("k_proj") != std::string::npos) {
+            this->k_proj->load_to_storage(name, ptr);
+        } else if (name.find("v_proj") != std::string::npos) {
+            this->v_proj->load_to_storage(name, ptr);
         } else if (name.find("o_proj") != std::string::npos) {
             this->o_proj->load_to_storage(name, ptr);
         } else if (name.find("input_layernorm") != std::string::npos) {
@@ -105,7 +119,7 @@ struct MiniCPM4W4A16GPTQMarlinAttention {
         }
 
         uint64_t *blockmask = nullptr;
-        if ((!apply_compress_lse && kv_cache->c1_len * kv_cache->c1_stride >= this->sparse_switch) || (apply_compress_lse && kv_cache->c2_len * kv_cache->c2_stride >= this->sparse_switch)) {
+        if ((!use_compress_lse && kv_cache->c1_len * kv_cache->c1_stride > this->sparse_switch) || (use_compress_lse && kv_cache->c2_len * kv_cache->c2_stride > this->sparse_switch)) {
             int q_round, k_round, out_len;
             cuda_perf_start_on_stream_f(M4Q_PREFILL_ATTN_STAGE1_CORE, stream.stream);
             mha_fwd_stage1(
@@ -113,13 +127,13 @@ struct MiniCPM4W4A16GPTQMarlinAttention {
                 1,
                 num_tokens,
                 kv_cache->c1_len,
-                apply_compress_lse ? kv_cache->c2_len : kv_cache->c1_len,
+                use_compress_lse ? kv_cache->c2_len : kv_cache->c1_len,
                 this->num_attention_heads,
                 this->num_key_value_heads,
                 this->head_dim,
                 this->permute_qkv_output,
                 kv_cache->c1_cache,
-                apply_compress_lse ? kv_cache->c2_cache : kv_cache->c1_cache,
+                use_compress_lse ? kv_cache->c2_cache : kv_cache->c1_cache,
                 nullptr,
                 kv_cache->stage1_score,
                 rsqrtf(float(this->head_dim)),
@@ -210,20 +224,20 @@ struct MiniCPM4W4A16GPTQMarlinAttention {
         } else {
             this->qkv_proj->prefill(stream, num_tokens, this->attn_norm->output, a_tmp, c_tmp);
             q = this->qkv_proj->output;
-        }
+        } 
         k = q + num_tokens * this->num_attention_heads * this->head_dim;
         v = k + num_tokens * this->num_key_value_heads * this->head_dim;
         kv_cache->rotary_embedding->prefill(stream, num_tokens, this->num_attention_heads, this->num_key_value_heads, q, k, position_ids);
 
+        copy_to_kvcache(stream, num_tokens, k, v, kv_cache, cache_length);
+
         cuda_perf_start_on_stream_f(M4Q_DECODE_ATTN_CORE, stream.stream);
         cuda_perf_start_on_stream_f(M4Q_DECODE_ATTN_STAGE1, stream.stream);
-
-        copy_to_kvcache(stream, num_tokens, k, v, kv_cache, cache_length);
 
         kv_cache->compress(stream);
 
         uint64_t *blockmask = nullptr;
-        if ((!apply_compress_lse && kv_cache->c1_len * kv_cache->c1_stride >= this->sparse_switch) || (apply_compress_lse && kv_cache->c2_len * kv_cache->c2_stride >= this->sparse_switch)) {
+        if ((!use_compress_lse && kv_cache->c1_len * kv_cache->c1_stride > this->sparse_switch) || (use_compress_lse && kv_cache->c2_len * kv_cache->c2_stride > this->sparse_switch)) {
             int q_round, k_round, out_len;
             cuda_perf_start_on_stream_f(M4Q_DECODE_ATTN_STAGE1_CORE, stream.stream);
             mha_fwd_stage1(
@@ -231,13 +245,13 @@ struct MiniCPM4W4A16GPTQMarlinAttention {
                 1,
                 num_tokens,
                 kv_cache->c1_len,
-                apply_compress_lse ? kv_cache->c2_len : kv_cache->c1_len,
+                use_compress_lse ? kv_cache->c2_len : kv_cache->c1_len,
                 this->num_attention_heads,
                 this->num_key_value_heads,
                 this->head_dim,
                 q,
                 kv_cache->c1_cache,
-                apply_compress_lse ? kv_cache->c2_cache : kv_cache->c1_cache,
+                use_compress_lse ? kv_cache->c2_cache : kv_cache->c1_cache,
                 nullptr,
                 kv_cache->stage1_score,
                 rsqrtf(float(this->head_dim)),

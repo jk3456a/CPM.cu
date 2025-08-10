@@ -7,10 +7,12 @@
 #include "../../qgemm/gptq_marlin/gptq_marlin.cuh"
 #include "../../qgemm/gptq_marlin/core/scalar_type.hpp"
 
-template <typename T, bool transposed=true, bool has_bias=false>
+template <typename T>
 struct W4A16GPTQMarlinLinear {
     int dim_in;
     int dim_out;
+    bool transposed;
+    bool has_bias;
 
     T* output;
     int32_t* weight;
@@ -33,7 +35,7 @@ struct W4A16GPTQMarlinLinear {
     bool has_act_order;
 
 
-    W4A16GPTQMarlinLinear(int dim_in, int dim_out, int group_size)
+    W4A16GPTQMarlinLinear(int dim_in, int dim_out, int group_size, bool transposed=true, bool has_bias=false)
                     :weight_scalar_dtype(static_cast<uint8_t>(0), 
                               static_cast<uint8_t>(4), 
                               false, 
@@ -42,6 +44,8 @@ struct W4A16GPTQMarlinLinear {
     {
         this->dim_in = dim_in;
         this->dim_out = dim_out;
+        this->transposed = transposed;
+        this->has_bias = has_bias;
 
         // place holder
         this->qzeros = 0;
@@ -72,7 +76,7 @@ struct W4A16GPTQMarlinLinear {
         const int workspace_size = (this->dim_out / 64)*16;
         workspace = (int32_t*)memory->allocate_for_model(workspace_size * sizeof(int32_t));
 
-        if constexpr (has_bias) {
+        if (has_bias) {
             bias = (T*)memory->allocate_for_model(dim_out * sizeof(T));
         }
     }
@@ -136,7 +140,7 @@ struct W4A16GPTQMarlinLinear {
         if (inplace) {
             elementwise_add<T>(stream, num_tokens, this->dim_out, tgt, tgt_temp, tgt);
         }
-        if constexpr (has_bias) {
+        if (has_bias) {
             batched_add<T>(stream, num_tokens, this->dim_out, tgt, this->bias, tgt);
         }
     }
