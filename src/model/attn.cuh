@@ -174,9 +174,7 @@ struct Attention {
             this->q_norm->load_to_storage(name, ptr);
         } else if (name.find("k_norm") != std::string::npos && this->use_qk_norm) {
             this->k_norm->load_to_storage(name, ptr);
-        } else if (name.find("input_layernorm") != std::string::npos) {
-            this->attn_norm->load_to_storage(name, ptr);
-        } else if (name.find("hidden_norm") != std::string::npos && this->hidden_factor == 2) {
+        } else if (name.find("input_layernorm") != std::string::npos || name.find("hidden_norm") != std::string::npos) {
             this->attn_norm->load_to_storage(name, ptr);
         } else {
             throw std::invalid_argument("Unsupported name " + name);

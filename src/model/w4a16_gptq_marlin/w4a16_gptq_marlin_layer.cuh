@@ -43,7 +43,7 @@ struct W4A16GPTQMarlinLayer {
     }
 
     void load_to_storage(std::string name, void* ptr) {
-        if (name.find("attn") != std::string::npos || name.find("input_layernorm") != std::string::npos) {
+        if (name.find("attn") != std::string::npos || name.find("input_layernorm") != std::string::npos || name.find("hidden_norm") != std::string::npos) {
             this->attn->load_to_storage(name, ptr);
         } else if (name.find("mlp") != std::string::npos || name.find("post_attention_layernorm") != std::string::npos) {
             this->ffn->load_to_storage(name, ptr);

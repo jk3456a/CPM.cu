@@ -162,5 +162,5 @@ class LLM_with_eagle(LLM_with_tree_drafter):
         super().load_from_hf()
 
         if self.drafter_type == "eagle3":
-            inv_freq = 1.0 / (10000 ** (torch.arange(0, self.eagle_config.head_dim, 2).float() / self.eagle_config.head_dim))
+            inv_freq = 1.0 / (self.eagle_config.rope_theta ** (torch.arange(0, self.eagle_config.head_dim, 2).float() / self.eagle_config.head_dim))
             self._load(f"{self.drafter_type}.rotary_emb.inv_freq", inv_freq, dtype=torch.float32)

@@ -605,10 +605,6 @@ struct MiniCPM4Eagle3Impl : Model {
     }
 
     void load_to_storage(std::string name, void* ptr) {
-        cudaError_t err = cudaGetLastError();
-        if (err != cudaSuccess) {
-            printf("cuda error occured at MiniCPM4Eagle3Impl::load_to_storage: %s\n", cudaGetErrorString(err));
-        }
         if (name.substr(0, 6) == "eagle3") {
             if (name.substr(0, 9) == "eagle3.fc") {
                 fc->load_to_storage(name, ptr);

@@ -40,9 +40,11 @@ struct W4A16GPTQMarlinAttention {
         this->use_attn_bias = use_attn_bias;
         this->hidden_factor = hidden_factor;
 
+        assert(hidden_factor == 1 || hidden_factor == 2);
+
         this->attn_norm = new RMSNorm<T>(hidden_size, rms_norm_eps);
 
-        this->qkv_proj = new W4A16GPTQMarlinLinear<T>(hidden_factor * hidden_size, (num_attention_heads + 2*num_key_value_heads) * head_dim, group_size);
+        this->qkv_proj = new W4A16GPTQMarlinLinear<T>(hidden_factor * hidden_size, (num_attention_heads + 2 * num_key_value_heads) * head_dim, group_size);
         this->q_proj = new W4A16GPTQMarlinLinear<T>(hidden_factor * hidden_size, num_attention_heads * head_dim, group_size);
         this->k_proj = new W4A16GPTQMarlinLinear<T>(hidden_factor * hidden_size, num_key_value_heads * head_dim, group_size);
         this->v_proj = new W4A16GPTQMarlinLinear<T>(hidden_factor * hidden_size, num_key_value_heads * head_dim, group_size);
@@ -130,7 +132,7 @@ struct W4A16GPTQMarlinAttention {
         T* k_cache = kv_cache->offset_k(num_history_tokens);
         T* v_cache = kv_cache->offset_v(num_history_tokens);
 
-        this->attn_norm->prefill(stream, num_tokens, input, prev_output, embed);
+        this->attn_norm->prefill(stream, num_tokens, input, prev_output, nullptr, embed);
         this->qkv_proj->prefill(stream, num_tokens, this->attn_norm->output, a_tmp, c_tmp);
         permute(stream, num_tokens, this->num_attention_heads * this->head_dim, this->num_key_value_heads * this->head_dim, this->qkv_proj->output, this->permute_qkv_output);
         cudaMemcpy(k_cache, this->permute_qkv_output + num_tokens*this->num_attention_heads*this->head_dim, num_tokens*this->num_key_value_heads*this->head_dim*sizeof(T), cudaMemcpyDeviceToDevice);
@@ -177,7 +179,7 @@ struct W4A16GPTQMarlinAttention {
     }
 
     void decode(const Stream& stream, int32_t num_tokens, int32_t padded_length, T* input, T* prev_output, int32_t* position_ids, int32_t* cache_length, const Mask& mask, KVCache<T>* kv_cache, T* a_tmp, float* c_tmp, T* embed = nullptr) {
-        this->attn_norm->prefill(stream, num_tokens, input, prev_output, embed);
+        this->attn_norm->prefill(stream, num_tokens, input, prev_output, nullptr, embed);
         T *q, *k, *v;
 
         if (num_tokens > 1) {
