@@ -191,7 +191,7 @@ class LLM(torch.nn.Module):
             self._load("model.rotary_emb.inv_freq", inv_freq, dtype=torch.float32)
             # self._load("model.rotary_emb.attention_scaling", attention_scaling, dtype=torch.float32)
 
-    def prefill(self, input_ids, position_ids, progress_callback=None):
+    def prefill(self, input_ids, position_ids, progress_callback=None, logits_buffer=None):
         assert input_ids.dtype == torch.int32
         # Check if input length exceeds maximum supported length
         if input_ids.numel() > self.max_total_length:
@@ -206,12 +206,15 @@ class LLM(torch.nn.Module):
         if progress_callback:
             progress_callback('begin', {'total_tokens': total_length})
         
+        # Use per-call logits buffer if provided, else fall back to shared buffer
+        logits_buf = self.logits if logits_buffer is None else logits_buffer
+
         for chunk_idx, i in enumerate(range(0, input_ids.numel(), self.chunk_length)):
             # torch.cuda.nvtx.range_push(f"chunk from {i}")
             C.prefill(
                 min(input_ids.numel() - i, self.chunk_length), i,
                 input_ids.view(-1)[i:].data_ptr(), position_ids.view(-1)[i:].data_ptr(),
-                self.logits.data_ptr()
+                logits_buf.data_ptr()
             )
             # torch.cuda.nvtx.range_pop()
             
@@ -230,9 +233,9 @@ class LLM(torch.nn.Module):
         # Store the actual prefill time for use in generate method
         self._last_prefill_time = actual_prefill_time
         
-        return self.logits[:1].clone()
+        return logits_buf[:1].clone()
 
-    def decode(self, input_ids, position_ids, cache_length, mask_2d = None):
+    def decode(self, input_ids, position_ids, cache_length, mask_2d = None, logits_buffer=None):
         assert input_ids.dtype == torch.int32
         assert position_ids.dtype == torch.int32
         assert cache_length.dtype == torch.int32
@@ -243,18 +246,19 @@ class LLM(torch.nn.Module):
         # torch.cuda.nvtx.range_push(f"decode")
         cache_length += input_ids.numel() # temparary add for convinience in flash_attn
         padded_length = (cache_length[0].item() + 128 - 1) // 128 * 128
+        logits_buf = self.logits if logits_buffer is None else logits_buffer
         C.decode(
             input_ids.numel(), padded_length,
             input_ids.data_ptr(), position_ids.data_ptr(), cache_length.data_ptr(),
             mask_2d.data_ptr() if mask_2d is not None else 0,
-            self.logits.data_ptr(),
+            logits_buf.data_ptr(),
             self.cuda_graph
         )
         cache_length -= input_ids.numel()
         # torch.cuda.nvtx.range_pop()
-        return self.logits[:input_ids.numel()].clone()
+        return logits_buf[:input_ids.numel()].clone()
 
-    def generate(self, input_ids, generation_length=100, teminators=[], use_stream=False, progress_callback=None):
+    def generate(self, input_ids, generation_length=100, teminators=[], use_stream=False, progress_callback=None, temperature=None):
         """
         Generate text with optional streaming output.
         Returns (tokens, decode_time, prefill_time) if use_stream=False, or generator yielding {'token', 'text', 'is_finished', 'prefill_time', 'decode_time'} if use_stream=True.
@@ -263,19 +267,24 @@ class LLM(torch.nn.Module):
 
         prefix_length = input_ids.numel()
         position_ids = torch.arange(prefix_length, dtype=torch.int32, device="cuda")
+        # Per-call logits buffer (avoid shared state across concurrent requests)
+        local_logits = None
+        # Effective temperature bound to this call
+        effective_temperature = self.temperature if temperature is None else temperature
         
         # Measure prefill time
         torch.cuda.synchronize()
         prefill_start = time.time()
-        logits = self.prefill(input_ids, position_ids, progress_callback)
+        logits = self.prefill(input_ids, position_ids, progress_callback, logits_buffer=local_logits)
         torch.cuda.synchronize()
         prefill_time = time.time() - prefill_start
         
-        if self.temperature > 0.0:
-            token = torch.multinomial(F.softmax(logits[0]/self.temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
+        if effective_temperature > 0.0:
+            token = torch.multinomial(F.softmax(logits[0]/effective_temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
         else:
             token = logits[0].argmax(dim=-1).item()
 
+        # Use instance-level tiny state tensors (original behavior)
         if not hasattr(self, "input_ids"):
             self.input_ids = torch.tensor([0], dtype=torch.int32, device="cuda")
             self.position_ids = torch.tensor([0], dtype=torch.int32, device="cuda")
@@ -309,9 +318,9 @@ class LLM(torch.nn.Module):
                     self.position_ids[0] = prefix_length + i
                     self.cache_length[0] = prefix_length + i
 
-                    logits = self.decode(self.input_ids, self.position_ids, self.cache_length)
-                    if self.temperature > 0.0:
-                        token = torch.multinomial(F.softmax(logits[0]/self.temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
+                    logits = self.decode(self.input_ids, self.position_ids, self.cache_length, logits_buffer=local_logits)
+                    if effective_temperature > 0.0:
+                        token = torch.multinomial(F.softmax(logits[0]/effective_temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
                     else:
                         token = logits[0].argmax(dim=-1).item()
                     
@@ -354,9 +363,9 @@ class LLM(torch.nn.Module):
                 self.position_ids[0] = prefix_length + i
                 self.cache_length[0] = prefix_length + i
 
-                logits = self.decode(self.input_ids, self.position_ids, self.cache_length)
-                if self.temperature > 0.0:
-                    token = torch.multinomial(F.softmax(logits[0]/self.temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
+                logits = self.decode(self.input_ids, self.position_ids, self.cache_length, logits_buffer=local_logits)
+                if effective_temperature > 0.0:
+                    token = torch.multinomial(F.softmax(logits[0]/effective_temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
                 else:
                     token = logits[0].argmax(dim=-1).item()
                 tokens.append(token)
