@@ -36,7 +36,7 @@ https://github.com/user-attachments/assets/ab36fd7a-485b-4707-b72f-b80b5c43d024
 
 - [框架安装](#install)
 - [模型权重](#modelweights)
-- [运行示例](#example)
+- [命令行接口 (CLI)](#cli)
 - [OpenAI API 服务](#openai-api)
 
 <div id="install"></div>
@@ -110,25 +110,60 @@ Decode tokens/s: 154.59
 - `Prefill` (输入) 和 `Decode` (输出) 速度通过（长度、时间和 token/s）输出。
 - `Mean accept length` (平均接受长度) 是使用投机采样时接受 token 的平均长度。
 
+<div id="cli"></div>
+
+## 命令行接口 (CLI)
+
+对于需要更精细化控制推理参数（如温度、生成长度等）的用户，我们推荐直接使用 `cpmcu.cli` 模块。这是进行详细配置和测试最灵活的方式。
+
+你可以通过 `python -m cpmcu.cli -h` 查看所有可用参数。
+
+**使用示例:**
+
+以下命令展示了如何使用 CLI 接口，并设置 `temperature` 为 `0.7`：
+
+```bash
+python -m cpmcu.cli \
+    --model-path openbmb/MiniCPM-Llama3-V-2_5-int4 \
+    --prompt-text "介绍一下清华大学" \
+    --temperature 0.7 \
+    --use-stream true
+```
+
 <div id="openai-api"></div>
 
-## OpenAI API 服务（实验性）
+## OpenAI API 服务
+
+CPM.cu 支持部署为一个与 OpenAI API 兼容的服务，方便与现有的生态系统集成。
+
+### 1. 启动服务
 
 启动 OpenAI 兼容的 API 服务器（参数与 `examples/minicpm4/test_generate.py` 相同）：
 
 ```bash
-cd examples
-python minicpm4/start_server.py [options]
+python examples/minicpm4/start_server.py [options]
 ```
+服务启动后，默认监听在 `http://localhost:8000`。你可以通过 `--host` 和 `--port` 参数来修改。
 
-测试 API，支持流式和非流式模式：
+### 2. 测试服务
+
+你可以使用 `examples/test_openai_api.py` 脚本来测试服务。该脚本支持流式和非流式两种模式，并可以通过命令行参数控制。
+
+**基础用法:**
 
 ```bash
-cd examples
-python test_openai_api.py [--no-stream]
+python examples/test_openai_api.py
 ```
 
-目前仅支持 `/v1/chat/completions` 接口，`model` 字段无效。
+**测试不同温度:**
+
+该脚本也支持 `--temperature` 参数，方便你测试模型在不同温度下的生成效果。
+
+```bash
+python examples/test_openai_api.py --temperature 0.5 [--no-stream]
+```
+
+目前服务仅支持 `/v1/chat/completions` 接口，请求中的 `model` 字段会被忽略。
 
 ## 代码结构
 

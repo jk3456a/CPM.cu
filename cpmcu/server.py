@@ -8,6 +8,7 @@ from typing import AsyncGenerator, Optional, Union
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse, JSONResponse
+from asyncio import Lock
 from fastapi.middleware.cors import CORSMiddleware
 
 from .common.openai_api import (
@@ -200,6 +201,9 @@ async def health_check():
     )
 
 
+# Global async lock to serialize generation to avoid CUDA context interference
+_generation_lock: Lock = Lock()
+
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
     """OpenAI Chat Completions API endpoint"""
@@ -231,29 +235,30 @@ async def chat_completions(request: ChatCompletionRequest):
             if tokenizer.eos_token_id not in stop_tokens:
                 stop_tokens.append(tokenizer.eos_token_id)
         
-        # Set temperature for this request
-        original_temp = getattr(model_instance, 'temperature', 0.0)
-        model_instance.temperature = request.temperature or 0.0
-        
-        try:
-            if request.stream:
-                return StreamingResponse(
-                    stream_chat_completion(
-                        input_ids, 
+        if request.stream:
+            async def _locked_stream():
+                async with _generation_lock:
+                    async for chunk in stream_chat_completion(
+                        input_ids,
                         request.max_tokens or 100,
                         stop_tokens,
                         request.model,
                         request,
-                        tokenizer
-                    ),
-                    media_type="text/plain",
-                    headers={
-                        "Cache-Control": "no-cache",
-                        "Connection": "keep-alive",
-                        "X-Accel-Buffering": "no",  # Disable nginx buffering
-                    }
-                )
-            else:
+                        tokenizer,
+                    ):
+                        yield chunk
+
+            return StreamingResponse(
+                _locked_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",  # Disable nginx buffering
+                }
+            )
+        else:
+            async with _generation_lock:
                 return await generate_chat_completion(
                     input_ids,
                     request.max_tokens or 100, 
@@ -262,9 +267,6 @@ async def chat_completions(request: ChatCompletionRequest):
                     request,
                     tokenizer
                 )
-        finally:
-            # Restore original temperature
-            model_instance.temperature = original_temp
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
@@ -285,7 +287,8 @@ async def generate_chat_completion(
         input_ids.view(-1), 
         generation_length=max_tokens,
         teminators=stop_tokens,
-        use_stream=False
+        use_stream=False,
+        temperature=request.temperature
     )
     
     # Handle different return formats based on model type
@@ -353,7 +356,8 @@ async def stream_chat_completion(
         input_ids.view(-1),
         generation_length=max_tokens,
         teminators=stop_tokens,
-        use_stream=True
+        use_stream=True,
+        temperature=request.temperature
     )
     
     accumulated_text = ""
@@ -364,16 +368,10 @@ async def stream_chat_completion(
             text = chunk['text']
             is_finished = chunk['is_finished']
             
-            # Only send the new text part
+            # Append accumulated text (optional) and send raw token text
             accumulated_text += text
-            
-            # Extract only assistant's response
-            if "Assistant:" in accumulated_text:
-                display_text = accumulated_text.split("Assistant:")[-1].strip()
-            else:
-                display_text = accumulated_text.strip()
-            
-            # Create streaming response
+
+            # Create streaming response using the model-provided token text
             if not is_finished:
                 response = ChatCompletionStreamResponse(
                     id=completion_id,

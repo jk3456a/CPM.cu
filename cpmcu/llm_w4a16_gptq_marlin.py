@@ -263,7 +263,7 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
         # torch.cuda.nvtx.range_pop()
         return self.logits[:input_ids.numel()].clone()
 
-    def generate(self, input_ids, generation_length=100, teminators=[], use_stream=False, progress_callback=None):
+    def generate(self, input_ids, generation_length=100, teminators=[], use_stream=False, progress_callback=None, temperature=None):
         """
         Generate text with optional streaming output.
         Returns (tokens, decode_time, prefill_time) if use_stream=False, or generator yielding {'token', 'text', 'is_finished', 'prefill_time', 'decode_time'} if use_stream=True.
@@ -280,8 +280,9 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
         torch.cuda.synchronize()
         prefill_time = time.time() - prefill_start
         
-        if self.temperature > 0.0:
-            token = torch.multinomial(F.softmax(logits[0]/self.temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
+        effective_temperature = self.temperature if temperature is None else temperature
+        if effective_temperature > 0.0:
+            token = torch.multinomial(F.softmax(logits[0]/effective_temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
         else:   
             token = logits[0].argmax(dim=-1).item()
 
@@ -319,8 +320,8 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
                     self.cache_length[0] = prefix_length + i
 
                     logits = self.decode(self.input_ids, self.position_ids, self.cache_length)
-                    if self.temperature > 0.0:
-                        token = torch.multinomial(F.softmax(logits[0]/self.temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
+                    if effective_temperature > 0.0:
+                        token = torch.multinomial(F.softmax(logits[0]/effective_temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
                     else:   
                         token = logits[0].argmax(dim=-1).item()
                     
@@ -364,8 +365,8 @@ class W4A16GPTQMarlinLLM(torch.nn.Module):
                 self.cache_length[0] = prefix_length + i
 
                 logits = self.decode(self.input_ids, self.position_ids, self.cache_length)
-                if self.temperature > 0.0:
-                    token = torch.multinomial(F.softmax(logits[0]/self.temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
+                if effective_temperature > 0.0:
+                    token = torch.multinomial(F.softmax(logits[0]/effective_temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
                 else:
                     token = logits[0].argmax(dim=-1).item()
                 tokens.append(token)

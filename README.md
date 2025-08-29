@@ -36,8 +36,8 @@ https://github.com/user-attachments/assets/ab36fd7a-485b-4707-b72f-b80b5c43d024
 
 - [Installation](#install)
 - [Model Weights](#modelweights)
-- [Quick Start](#example)
-- [OpenAI API Server](#openai-api)
+- [Command Line Interface (CLI)](#cli)
+- [OpenAI API Service](#openai-api)
 
 <div id="install"></div>
 
@@ -110,25 +110,60 @@ Where:
 - the `Prefill` and `Decode` speed are output by (length, time and token/s).
 - the `Mean accept length` is the average length of the accepted tokens when using Speculative Sampling.
 
+<div id="cli"></div>
+
+## Command Line Interface (CLI)
+
+For users who need more granular control over inference parameters (e.g., temperature, generation length), we recommend using the `cpmcu.cli` module directly. This is the most flexible way to perform detailed configuration and testing.
+
+You can view all available parameters by running `python -m cpmcu.cli -h`.
+
+**Example Usage:**
+
+The following command shows how to use the CLI and set the `temperature` to `0.7`:
+
+```bash
+python -m cpmcu.cli \
+    --model-path openbmb/MiniCPM-Llama3-V-2_5-int4 \
+    --prompt-text "Tell me about Tsinghua University" \
+    --temperature 0.7 \
+    --use-stream true
+```
+
 <div id="openai-api"></div>
 
-## OpenAI API Server (experimental)
+## OpenAI API Service
 
-Start the OpenAI-compatible API server (same args as `examples/minicpm4/test_generate.py`):
+CPM.cu can be deployed as a service compatible with the OpenAI API, making it easy to integrate with existing ecosystems.
 
-```bash
-cd examples
-python minicpm4/start_server.py [options]
-```
+### 1. Start the Service
 
-Test the API (supports streaming and non-streaming modes):
+We provide a convenient script to load the model and start a FastAPI service.
 
 ```bash
-cd examples
-python test_openai_api.py [--no-stream]
+python examples/minicpm4/start_server.py [options]
+```
+After starting, the service listens on `http://localhost:8000` by default. You can change this using the `--host` and `--port` arguments.
+
+### 2. Test the Service
+
+You can use the `examples/test_openai_api.py` script to test the service. It supports both streaming and non-streaming modes, controllable via command-line arguments.
+
+**Basic Usage:**
+
+```bash
+python examples/test_openai_api.py
 ```
 
-Only `/v1/chat/completions` is supported and the `model` field is ignored.
+**Testing with different temperatures:**
+
+The script also supports the `--temperature` argument, allowing you to test the model's output with different sampling temperatures.
+
+```bash
+python examples/test_openai_api.py --temperature 0.5
+```
+
+Currently, only the `/v1/chat/completions` endpoint is supported, and the `model` field in requests is ignored.
 
 ## Code Structure
 

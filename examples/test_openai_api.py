@@ -15,30 +15,89 @@ def render_config_table(data, title, color="blue"):
 
 def handle_response(response, stream=True):
     """Handle both streaming and non-streaming responses"""
+    def _iter_sse_events(resp):
+        """Yield parsed JSON objects from an SSE stream.
+
+        Robustly handles multi-line data fields and line-wrapped JSON by buffering
+        until an empty line (event boundary). If a single JSON spans multiple
+        data lines, they will be concatenated with newlines per SSE spec.
+        """
+        event_data_lines = []
+        pending_json_fragment = ""
+        decoder = json.JSONDecoder()
+
+        for raw_line in resp.iter_lines(decode_unicode=True):
+            if raw_line is None:
+                continue
+            line = raw_line.rstrip("\r")
+
+            # Empty line indicates end of an SSE event
+            if line == "":
+                if not event_data_lines:
+                    continue
+                data_str = "\n".join(event_data_lines).strip()
+                event_data_lines.clear()
+
+                if data_str == "[DONE]":
+                    yield {"_done": True}
+                    continue
+
+                # Attempt to parse JSON; if incomplete, buffer and try again later
+                candidate = pending_json_fragment + data_str
+                try:
+                    obj = json.loads(candidate)
+                    pending_json_fragment = ""
+                    yield obj
+                except json.JSONDecodeError:
+                    # Keep buffering; a subsequent event may contain the rest
+                    pending_json_fragment = candidate + "\n"
+                continue
+
+            # Normal data line
+            if line.startswith("data:"):
+                part = line[5:].lstrip()
+                # Per SSE, multiple data lines compose one event payload
+                event_data_lines.append(part)
+            else:
+                # Line-wrapped continuation without "data:" prefix; append as-is
+                if event_data_lines:
+                    event_data_lines[-1] += "\n" + line
+
+        # Flush any remaining buffered event on stream end
+        if event_data_lines:
+            data_str = "\n".join(event_data_lines).strip()
+            if data_str and data_str != "[DONE]":
+                try:
+                    yield json.loads(data_str)
+                except json.JSONDecodeError:
+                    pass
+
     if stream:
         logger.info("Processing streaming response...")
         finish_reason = None
         with display.create_stream("Generated Response") as stream_display:
-            for line in response.iter_lines(decode_unicode=True):
-                if line and line.startswith('data: '):
-                    data_str = line[6:].strip()
-                    if data_str == '[DONE]' or not data_str:
-                        continue
-                    
-                    try:
-                        chunk = json.loads(data_str)
-                        if 'choices' in chunk and chunk['choices']:
-                            choice = chunk['choices'][0]
-                            if 'delta' in choice and 'content' in choice['delta']:
-                                content = choice['delta']['content']
-                                if content:
-                                    stream_display.append(content)
-                            elif choice.get('finish_reason'):
-                                finish_reason = choice['finish_reason']
-                                break
-                    except json.JSONDecodeError as e:
-                        logger.error(f"Error parsing JSON: {e}")
-        
+            for chunk in _iter_sse_events(response):
+                if isinstance(chunk, dict) and chunk.get("_done"):
+                    break
+
+                try:
+                    if isinstance(chunk, dict):
+                        choices = chunk.get('choices')
+                        if isinstance(choices, list) and len(choices) > 0:
+                            choice = choices[0]
+                            if isinstance(choice, dict):
+                                delta = choice.get('delta') or {}
+                                if isinstance(delta, dict):
+                                    content = delta.get('content')
+                                    if isinstance(content, str) and content:
+                                        stream_display.append(content)
+                                finish = choice.get('finish_reason')
+                                if isinstance(finish, str) and finish:
+                                    finish_reason = finish
+                                    break
+                except Exception as e:
+                    logger.error(f"Error handling chunk: {e}")
+
         # Log completion after stream context ends
         if finish_reason:
             logger.success(f"Generation finished: {finish_reason}")
@@ -59,7 +118,7 @@ def handle_response(response, stream=True):
                 logger.warning("No choices found in response")
     return True
 
-def test_chat_completion(host, port, stream):
+def test_chat_completion(host, port, stream, temperature):
     """Test chat completion"""
     url = f"http://{host}:{port}/v1/chat/completions"
     data = {
@@ -67,7 +126,7 @@ def test_chat_completion(host, port, stream):
         "messages": [{"role": "user", "content": "Please tell me how to write quick sort algorithm"}],
         "stream": stream,
         "max_tokens": 1024,
-        "temperature": 0.0
+        "temperature": temperature
     }
     
     mode = "streaming" if stream else "non-streaming"
@@ -138,6 +197,8 @@ if __name__ == "__main__":
     test_group.add_argument('--plain-output', '--plain_output', default=False,
                            type=str2bool, nargs='?', const=True,
                            help='Use plain text output instead of rich formatting (default: False)')
+    test_group.add_argument('--temperature', '--temp', type=float, default=0.0,
+                           help='Sampling temperature (default: 0.0)')
     
     args = parser.parse_args()
     
@@ -154,7 +215,7 @@ if __name__ == "__main__":
     
     # Run tests
     if check_server_health(args.host, args.port):
-        success = test_chat_completion(args.host, args.port, args.use_stream)
+        success = test_chat_completion(args.host, args.port, args.use_stream, args.temperature)
         result_msg = f"{mode} test {'completed successfully' if success else 'failed'}!"
         (logger.success if success else logger.error)(result_msg)
         sys.exit(0 if success else 1)
