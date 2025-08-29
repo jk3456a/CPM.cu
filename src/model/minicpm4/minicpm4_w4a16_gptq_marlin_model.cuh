@@ -45,7 +45,7 @@ struct MiniCPM4W4A16GPTQMarlinModelImpl : Model {
         int block_window_size = 32,
         int sparse_topk_k = 32,
         int sparse_switch = 8192,
-        bool apply_compress_lse = false
+        bool use_compress_lse = false
     ) {
         this->vocab_size = vocab_size;
         this->num_hidden_layers = num_hidden_layers;
@@ -61,11 +61,11 @@ struct MiniCPM4W4A16GPTQMarlinModelImpl : Model {
 
         memory = new Memory(memory_limit);
 
-        kv_caches = new MiniCPM4KVCacheManager<T>(num_hidden_layers, num_key_value_heads, head_dim, sparse_topk_k, apply_compress_lse);
+        kv_caches = new MiniCPM4KVCacheManager<T>(num_hidden_layers, num_key_value_heads, head_dim, sparse_topk_k, use_compress_lse);
 
         embedding = new Embedding<T>(vocab_size, hidden_size, scale_embed);
         for (int i = 0; i < num_hidden_layers; i++) {
-            layers.push_back(new MiniCPM4W4A16GPTQMarlinLayer<T>(hidden_size, intermediate_size, num_attention_heads, num_key_value_heads, head_dim, rms_norm_eps, group_size, residual_scale, sink_window_size, block_window_size, sparse_switch, apply_compress_lse));
+            layers.push_back(new MiniCPM4W4A16GPTQMarlinLayer<T>(hidden_size, intermediate_size, num_attention_heads, num_key_value_heads, head_dim, rms_norm_eps, group_size, residual_scale, sink_window_size, block_window_size, sparse_switch, use_compress_lse));
         }
         norm = new RMSNorm<T>(hidden_size, rms_norm_eps);
         lm_head = new LMHead<T>(hidden_size, vocab_size, scale_lmhead);

@@ -48,8 +48,8 @@ https://github.com/user-attachments/assets/ab36fd7a-485b-4707-b72f-b80b5c43d024
 本库的构建依赖于 PyTorch 和 Ninja，请在安装本库前确保已正确安装这两个依赖。
 
 ```bash
-git clone https://github.com/OpenBMB/cpm.cu.git --recursive
-cd cpm.cu
+git clone https://github.com/OpenBMB/CPM.cu.git --recursive
+cd CPM.cu
 pip install .
 ```
 
@@ -68,19 +68,21 @@ pip install .
 我们提供了一个简单的示例来展示如何使用 CPM.cu。
 
 ```bash
-python3 tests/test_generate.py --prompt-file <输入文件路径>
+cd examples
+python3 minicpm4/test_generate.py --prompt-file <输入文件路径>
 ```
 
 如果您不指定模型路径，脚本将从 OpenBMB 的 Hugging Face 仓库加载模型。
 如果你想使用本地路径，我们推荐不修改所有模型文件名并放在同一目录下，这样可以通过-p指定该目录运行模型。否则建议修改代码中的路径。
 您可以使用 --help 了解更多关于脚本的功能。
 
-我们还有一个脚本，`tests/long_prompt_gen.py`，用于生成长代码总结。
+我们还有一个脚本，`examples/long_prompt_gen.py`，用于生成长代码总结。
 这个脚本会自动从本仓库中收集代码，并提示模型"Summarize the code."。
 
 ```bash
-python3 tests/long_prompt_gen.py # 生成 prompt.txt (更多细节请见 --help)
-python3 tests/test_generate.py --prompt-file prompt.txt
+cd examples
+python3 long_prompt_gen.py # 生成 prompt.txt (更多细节请见 --help)
+python3 minicpm4/test_generate.py --prompt-file ../prompt.txt
 ```
 
 输出应为如下格式：
@@ -110,18 +112,20 @@ Decode tokens/s: 154.59
 
 <div id="openai-api"></div>
 
-## OpenAI API 服务
+## OpenAI API 服务（实验性）
 
-启动 OpenAI 兼容的 API 服务器（参数与 `tests/test_generate.py` 相同）：
+启动 OpenAI 兼容的 API 服务器（参数与 `examples/minicpm4/test_generate.py` 相同）：
 
 ```bash
-python -m cpmcu.server [options]
+cd examples
+python minicpm4/start_server.py [options]
 ```
 
 测试 API，支持流式和非流式模式：
 
 ```bash
-python tests/test_openai_api.py [--no-stream]
+cd examples
+python test_openai_api.py [--no-stream]
 ```
 
 目前仅支持 `/v1/chat/completions` 接口，`model` 字段无效。
@@ -129,7 +133,7 @@ python tests/test_openai_api.py [--no-stream]
 ## 代码结构
 
 ```bash
-cpm.cu/
+CPM.cu/
 ├── src/
 │   ├── flash_attn/ # attention: 稀疏, 投机树状验证等
 │   ├── model/

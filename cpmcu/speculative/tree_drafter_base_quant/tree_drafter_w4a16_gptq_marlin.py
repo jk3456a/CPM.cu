@@ -49,7 +49,7 @@ class W4A16GPTQMarlinLLM_with_tree_drafter(W4A16GPTQMarlinLLM):
 
             super().load_from_hf()
 
-    def generate(self, input_ids, generation_length=100, teminators=[], use_stream=False):
+    def generate(self, input_ids, generation_length=100, teminators=[], use_stream=False, progress_callback=None):
         """
         Generate text with optional streaming output for quantized tree drafter.
         Returns (tokens, accept_lengths, decode_time, prefill_time) if use_stream=False, or generator yielding {'token', 'text', 'is_finished', 'accept_length', 'prefill_time', 'decode_time'} if use_stream=True.
@@ -63,41 +63,17 @@ class W4A16GPTQMarlinLLM_with_tree_drafter(W4A16GPTQMarlinLLM):
         
         position_ids = torch.arange(prefix_length, dtype=torch.int32, device="cuda")
         
-        # Set progress flag before prefill for stream mode
-        if use_stream:
-            self._show_prefill_progress = True
-        else:
-            self._show_prefill_progress = False
-        
         # Measure prefill time
-        if self.use_enter and use_stream:
-            # In use_enter mode, timing will be handled inside prefill method
-            logits = self.prefill(input_ids, position_ids)
-            prefill_time = getattr(self, '_last_prefill_time', 0.0)  # Get actual prefill time
-        else:
-            torch.cuda.synchronize()
-            prefill_start = time.time()
-            logits = self.prefill(input_ids, position_ids)
-            torch.cuda.synchronize()
-            prefill_time = time.time() - prefill_start
+        torch.cuda.synchronize()
+        prefill_start = time.time()
+        logits = self.prefill(input_ids, position_ids, progress_callback)
+        torch.cuda.synchronize()
+        prefill_time = time.time() - prefill_start
         
         if self.temperature > 0.0:
             self.tree_draft_ids[:1].copy_(torch.multinomial(F.softmax(logits[0]/self.temperature, dim=-1), num_samples=1, generator=self.generator))
         else:
             self.tree_draft_ids[:1].copy_(logits[0].argmax(dim=-1))
-
-        # Wait for user input before decode phase if use_decode_enter is enabled
-        if self.use_decode_enter:
-            if use_stream and self.use_enter:
-                # In stream mode with use_enter, we already showed [Decoding], just wait for input
-                print("Please Press Enter to Start Decoding...", end="", flush=True)
-                input()  # Wait for Enter key
-                print("\r" + " " * 50 + "\r", end="", flush=True)  # Clear the prompt without showing [Decoding] again
-            else:
-                # In other modes, show prompt and wait
-                print("Please Press Enter to Start Decoding...", end="", flush=True)
-                input()  # Wait for Enter key
-                print("\r" + " " * 50 + "\r[Decoding]", flush=True)  # Show [Decoding] only when use_enter is not enabled
 
         if use_stream:
             # Stream generation for quantized tree drafter (optimized)
@@ -107,7 +83,7 @@ class W4A16GPTQMarlinLLM_with_tree_drafter(W4A16GPTQMarlinLLM):
                 
                 # yield first token
                 token = self.tree_draft_ids[0].item()
-                text = self.tokenizer.decode([token], skip_special_tokens=False)
+                text = self.tokenizer.decode([token], skip_special_tokens=True)
                 prev_token = token
                 
                 yield {
@@ -151,11 +127,11 @@ class W4A16GPTQMarlinLLM_with_tree_drafter(W4A16GPTQMarlinLLM):
                         # For correct spacing, decode with previous token context
                         if prev_token is not None:
                             context_tokens = [prev_token] + accepted_tokens
-                            context_text = self.tokenizer.decode(context_tokens, skip_special_tokens=False)
-                            prev_text = self.tokenizer.decode([prev_token], skip_special_tokens=False)
+                            context_text = self.tokenizer.decode(context_tokens, skip_special_tokens=True)
+                            prev_text = self.tokenizer.decode([prev_token], skip_special_tokens=True)
                             new_text = context_text[len(prev_text):]
                         else:
-                            new_text = self.tokenizer.decode(accepted_tokens, skip_special_tokens=False)
+                            new_text = self.tokenizer.decode(accepted_tokens, skip_special_tokens=True)
                         
                         # Yield tokens with batch text for first token, empty for others
                         for j in range(accept_length):

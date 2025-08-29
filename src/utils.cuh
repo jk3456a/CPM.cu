@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <iostream>
 #include <iomanip>
+#include <sstream>
+#include <stdexcept>
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 #include "signal_handler.cuh"
@@ -40,6 +42,28 @@ inline const char* cublasGetErrorString(cublasStatus_t status) {
         default: return "Unknown cuBLAS error";
     }
 }
+
+// Custom error checking macros to replace TORCH_CHECK functionality
+template<typename... Args>
+std::string format_error_message(Args&&... args) {
+    std::ostringstream oss;
+    ((oss << std::forward<Args>(args)), ...);
+    return oss.str();
+}
+
+#define ERROR_CHECK(condition, ...) \
+  if (!(condition)) { \
+    std::string msg = ::format_error_message(__VA_ARGS__); \
+    std::cerr << "Error at " << __FILE__ << ":" << __LINE__ << ": " << msg << std::endl; \
+    throw std::runtime_error(msg); \
+  }
+
+#define VALUE_CHECK(condition, ...) \
+  if (!(condition)) { \
+    std::string msg = ::format_error_message(__VA_ARGS__); \
+    std::cerr << "Value error at " << __FILE__ << ":" << __LINE__ << ": " << msg << std::endl; \
+    throw std::invalid_argument(msg); \
+  }
 
 #define cudaCheck(err) \
   if (err != cudaSuccess) { \

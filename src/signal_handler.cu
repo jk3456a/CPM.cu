@@ -15,8 +15,6 @@ void init_signal_handlers() {
 #endif
     original_handlers[SIGTERM] = signal(SIGTERM, signal_handler);  // 终止信号
     original_handlers[SIGINT] = signal(SIGINT, signal_handler);    // 中断信号 (Ctrl+C)
-    
-    std::cout << "Signal handlers initialized for common exceptions" << std::endl;
 }
 
 // TODO 修复和python traceback的协作

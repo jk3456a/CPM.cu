@@ -19,6 +19,7 @@
 #include "marlin.cuh"
 #include "core/scalar_type.hpp"
 #include "gptq_marlin_utils.cuh"
+#include "../../utils.cuh"
 
 namespace marlin {
 
@@ -147,7 +148,7 @@ bool is_valid_cache_size(thread_config_t const& th_config, int max_m_blocks,
 
     max_m_blocks--;
     if (max_m_blocks == 0) {
-      TORCH_CHECK(false, "Unexpected m_blocks = ", m_blocks);
+      ERROR_CHECK(false, "Unexpected m_blocks = ", m_blocks);
     }
   }
 
@@ -158,7 +159,7 @@ bool is_valid_cache_size(thread_config_t const& th_config, int max_m_blocks,
   float reduce_size = max(th_config.num_threads * 32 * 4,
                           (tb_n / 64) * 32 * (tb_max_m / 16) * 4 * 2 * 4 * 2);
 
-  TORCH_CHECK(max_shared_mem / 2 > scales_cache_size);  // Sanity
+  ERROR_CHECK(max_shared_mem / 2 > scales_cache_size, "Sanity check failed: max_shared_mem/2 must be > scales_cache_size");  // Sanity
 
   return pipe_size + reduce_size < 0.95f * (max_shared_mem - scales_cache_size);
 }

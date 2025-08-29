@@ -1,5 +1,6 @@
 #pragma once
 #include "../w4a16_gptq_marlin/w4a16_gptq_marlin_model.cuh"
+#include "../w4a16_gptq_marlin/w4a16_gptq_marlin_layer.cuh"
 #include "../eagle.cuh"
 
 template<typename T>
@@ -12,8 +13,8 @@ struct EagleImplBaseW4A16GPTQMarlin : Model {
 
     W4A16GPTQMarlinModelImpl<T>* model;
     KVCacheManager<T>* kv_caches;
-    std::vector<Layer<T>*> layers;
-    Linear<T, true, true> *fc1;
+    std::vector<W4A16GPTQMarlinLayer<T>*> layers;
+    Linear<T> *fc1;
     Linear<T> *fc2;
     functions::TopK<T>* topk_func;
     functions::TopK<T>* topk_func_2;
@@ -37,7 +38,8 @@ struct EagleImplBaseW4A16GPTQMarlin : Model {
         int num_layers,
         int num_iter,
         int topk_per_iter,
-        int tree_size
+        int tree_size,
+        int group_size = 128
     ) {
         this->model = model;
         this->num_layers = num_layers;
@@ -47,10 +49,10 @@ struct EagleImplBaseW4A16GPTQMarlin : Model {
         this->total_tried = topk_per_iter * topk_per_iter * (num_iter - 1) + topk_per_iter;
 
         kv_caches = new KVCacheManager<T>(num_layers, this->model->num_key_value_heads, this->model->head_dim);
-        fc1 = new Linear<T, true, true>(this->model->hidden_size, this->model->hidden_size);
+        fc1 = new Linear<T>(this->model->hidden_size, this->model->hidden_size, true, true);
         fc2 = new Linear<T>(this->model->hidden_size, this->model->hidden_size);
         for (int i = 0; i < num_layers; i++) {
-            layers.push_back(new Layer<T>(this->model->hidden_size, this->model->intermediate_size, this->model->num_attention_heads, this->model->num_key_value_heads, this->model->head_dim, this->model->rms_norm_eps));
+            layers.push_back(new W4A16GPTQMarlinLayer<T>(this->model->hidden_size, this->model->intermediate_size, this->model->num_attention_heads, this->model->num_key_value_heads, this->model->head_dim, this->model->rms_norm_eps, group_size));
         }
 
         assert(topk_per_iter <= this->tree_size-1);

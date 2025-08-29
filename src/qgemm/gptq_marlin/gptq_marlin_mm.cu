@@ -21,6 +21,7 @@
 #include "core/scalar_type.hpp"
 #include "gptq_marlin_mm.cuh"
 #include "gptq_marlin_utils.cuh"
+#include "../../utils.cuh"
 
 
 template <typename T>
@@ -39,17 +40,17 @@ void marlin_mm(const void* A, const void* B, void* C, void* C_tmp, void* s,
                int dev, cudaStream_t stream, int thread_k, int thread_n,
                int sms, int max_par, bool use_fp32_reduce) {
   if (has_zp) {
-    TORCH_CHECK(
+    VALUE_CHECK(
         q_type == vllm::kU4 || q_type == vllm::kU8,
         "q_type must be u4 or u8 when has_zp = True. Got = ", q_type.str());
   } else {
-    TORCH_CHECK(
+    VALUE_CHECK(
         q_type == vllm::kU4B8 || q_type == vllm::kU8B128,
         "q_type must be uint4b8 or uint8b128 when has_zp = False. Got = ",
         q_type.str());
   }
 
-  TORCH_CHECK(prob_m > 0 && prob_n > 0 && prob_k > 0, "Invalid MNK = [", prob_m,
+  VALUE_CHECK(prob_m > 0 && prob_n > 0 && prob_k > 0, "Invalid MNK = [", prob_m,
               ", ", prob_n, ", ", prob_k, "]");
 
   // TODO: remove alias when we start supporting other 8bit types
@@ -65,7 +66,7 @@ void marlin_mm(const void* A, const void* B, void* C, void* C_tmp, void* s,
   int max_shared_mem = 0;
   cudaDeviceGetAttribute(&max_shared_mem,
                          cudaDevAttrMaxSharedMemoryPerBlockOptin, dev);
-  TORCH_CHECK(max_shared_mem > 0);
+  ERROR_CHECK(max_shared_mem > 0, "Failed to get max shared memory size");
 
   // Set thread config
   exec_config_t exec_cfg;
@@ -80,7 +81,7 @@ void marlin_mm(const void* A, const void* B, void* C, void* C_tmp, void* s,
                                 has_act_order, is_k_full, max_shared_mem);
   }
 
-  TORCH_CHECK(exec_cfg.max_m_blocks > 0 &&
+  VALUE_CHECK(exec_cfg.max_m_blocks > 0 &&
                   is_valid_config(exec_cfg.tb_cfg, exec_cfg.max_m_blocks,
                                   prob_m, prob_n, prob_k, num_bits, group_size,
                                   has_act_order, is_k_full, max_shared_mem),
@@ -102,20 +103,20 @@ void marlin_mm(const void* A, const void* B, void* C, void* C_tmp, void* s,
 
   int blocks = sms;
 
-  TORCH_CHECK(prob_n % thread_n == 0, "prob_n = ", prob_n,
+  VALUE_CHECK(prob_n % thread_n == 0, "prob_n = ", prob_n,
               " is not divisible by thread_n = ", thread_n);
-  TORCH_CHECK(prob_k % thread_k == 0, "prob_k = ", prob_k,
+  VALUE_CHECK(prob_k % thread_k == 0, "prob_k = ", prob_k,
               " is not divisible by thread_k = ", thread_k);
 
   int group_blocks = 0;
   if (has_act_order) {
     if (is_k_full) {
-      TORCH_CHECK(group_size != -1);
+      VALUE_CHECK(group_size != -1, "group_size must not be -1 when has_act_order=true and is_k_full=true");
       group_blocks = group_size / 16;
-      TORCH_CHECK(prob_k % group_blocks == 0, "prob_k = ", prob_k,
+      VALUE_CHECK(prob_k % group_blocks == 0, "prob_k = ", prob_k,
                   " is not divisible by group_blocks = ", group_blocks);
     } else {
-      TORCH_CHECK(group_size == 0);
+      VALUE_CHECK(group_size == 0, "group_size must be 0 when has_act_order=true and is_k_full=false");
       group_blocks = 0;
     }
 
@@ -124,7 +125,7 @@ void marlin_mm(const void* A, const void* B, void* C, void* C_tmp, void* s,
       group_blocks = -1;
     } else {
       group_blocks = group_size / 16;
-      TORCH_CHECK(prob_k % group_blocks == 0, "prob_k = ", prob_k,
+      VALUE_CHECK(prob_k % group_blocks == 0, "prob_k = ", prob_k,
                   " is not divisible by group_blocks = ", group_blocks);
     }
   }
@@ -191,7 +192,7 @@ void marlin_mm(const void* A, const void* B, void* C, void* C_tmp, void* s,
     AWQ_CALL_IF(vllm::kU8, 8, 4, 128)
     AWQ_CALL_IF(vllm::kU8, 4, 8, 128)
     else {
-      TORCH_CHECK(false, "Unsupported shapes: MNK = [", prob_m, ", ", prob_n,
+      ERROR_CHECK(false, "Unsupported shapes: MNK = [", prob_m, ", ", prob_n,
                   ", ", prob_k, "]", ", has_act_order = ", has_act_order,
                   ", num_groups = ", num_groups, ", group_size = ", group_size,
                   ", thread_m_blocks = ", thread_m_blocks,

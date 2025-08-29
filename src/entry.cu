@@ -1,4 +1,6 @@
+#ifndef CPMCU_DISABLE_PYBIND11
 #include <pybind11/pybind11.h>
+#endif
 #include <cuda_runtime.h>
 #include <type_traits>
 #include <stdexcept>
@@ -84,12 +86,12 @@
   [&] {                                      \
     if (COND == true) {                              \
       using LayerType = W4A16GPTQMarlinLayer<T>; \
-      using Fc1Type = W4A16GPTQMarlinLinear<T, true, true>; \
+      using Fc1Type = W4A16GPTQMarlinLinear<T>; \
       using Fc2Type = W4A16GPTQMarlinLinear<T>; \
       return __VA_ARGS__();                  \
     } else { \
       using LayerType = Layer<T>; \
-      using Fc1Type = Linear<T, true, true>; \
+      using Fc1Type = Linear<T>; \
       using Fc2Type = Linear<T>; \
       return __VA_ARGS__();                  \
     }                                        \
@@ -111,7 +113,9 @@ void init_base_model(
     int chunk_length,
     float scale_embed,
     float scale_lmhead,
-    float scale_residual
+    float scale_residual,
+    bool use_qk_norm = false,
+    bool use_attn_bias = false
 ) {
     init_resources();
 
@@ -129,7 +133,9 @@ void init_base_model(
             chunk_length,
             scale_embed,
             scale_lmhead,
-            scale_residual
+            scale_residual,
+            use_qk_norm,
+            use_attn_bias
         );
     });
 
@@ -154,7 +160,7 @@ void init_minicpm4_model(
     int block_window_size,
     int sparse_topk_k,
     int sparse_switch,
-    bool apply_compress_lse
+    bool use_compress_lse
 ) {
     init_resources();
 
@@ -177,7 +183,7 @@ void init_minicpm4_model(
             block_window_size,
             sparse_topk_k,
             sparse_switch,
-            apply_compress_lse
+            use_compress_lse
         );
     });
 
@@ -198,7 +204,9 @@ void init_w4a16_gptq_marlin_base_model(
     int chunk_length,
     float scale_embed,
     float scale_lmhead,
-    float scale_residual
+    float scale_residual,
+    bool use_qk_norm,
+    bool use_attn_bias
 ) {
     init_resources();
 
@@ -217,7 +225,9 @@ void init_w4a16_gptq_marlin_base_model(
             chunk_length,
             scale_embed,
             scale_lmhead,
-            scale_residual
+            scale_residual,
+            use_qk_norm,
+            use_attn_bias
         );
     });
 
@@ -243,7 +253,7 @@ void init_w4a16_gptq_marlin_minicpm4_model(
     int block_window_size,
     int sparse_topk_k,
     int sparse_switch,
-    bool apply_compress_lse
+    bool use_compress_lse
 ) {
     init_resources();
 
@@ -267,7 +277,7 @@ void init_w4a16_gptq_marlin_minicpm4_model(
             block_window_size,
             sparse_topk_k,
             sparse_switch,
-            apply_compress_lse
+            use_compress_lse
         );
     });
 
@@ -276,6 +286,11 @@ void init_w4a16_gptq_marlin_minicpm4_model(
 // eagle model
 void init_eagle_model(
     int num_layers,
+    int intermediate_size,
+    int num_attention_heads,
+    int num_key_value_heads,
+    int head_dim,
+    float rms_norm_eps,
     int num_iter,
     int topk_per_iter,
     int tree_size,
@@ -288,6 +303,11 @@ void init_eagle_model(
             model = new EagleImpl<elem_type, ModelType>(
                 typed_model,
                 num_layers,
+                intermediate_size,
+                num_attention_heads,
+                num_key_value_heads,
+                head_dim,
+                rms_norm_eps,
                 num_iter,
                 topk_per_iter,
                 tree_size
@@ -301,6 +321,11 @@ void init_eagle_model(
 
 void init_minicpm4_eagle_model(
     int num_layers,
+    int intermediate_size,
+    int num_attention_heads,
+    int num_key_value_heads,
+    int head_dim,
+    float rms_norm_eps,
     int num_iter,
     int topk_per_iter,
     int tree_size,
@@ -321,6 +346,11 @@ void init_minicpm4_eagle_model(
                 model = new MiniCPM4EagleImpl<elem_type, ModelType, LayerType, Fc1Type, Fc2Type>(
                     typed_model,
                     num_layers,
+                    intermediate_size,
+                    num_attention_heads,
+                    num_key_value_heads,
+                    head_dim,
+                    rms_norm_eps,
                     num_iter,
                     topk_per_iter,
                     tree_size,
@@ -506,6 +536,7 @@ void print_perf_summary() {
     perf_summary();
 }
 
+#ifndef CPMCU_DISABLE_PYBIND11
 PYBIND11_MODULE(C, m) {
     // base bind
     m.def("init_base_model", &init_base_model, "Init base model");
@@ -531,4 +562,5 @@ PYBIND11_MODULE(C, m) {
     m.def("draft", &draft, "Draft");
     m.def("verify_and_fix", &verify_and_fix, "Verify and fix");
     m.def("print_perf_summary", &print_perf_summary, "Print perf summary");
-} 
+}
+#endif 
