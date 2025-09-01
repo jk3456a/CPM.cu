@@ -31,15 +31,16 @@ def load_dataset(dataset_type: str, dataset_path: Optional[str] = None) -> Tuple
     if dataset_path:
         dataset_file = dataset_path
     else:
-        # Default paths in benchmark/datasets/
+        # Default paths after benchmark restructure
         default_paths = {
-            "mtbench": "benchmark/datasets/mtbench.jsonl",
-            "specbench": "benchmark/datasets/specbench.jsonl", 
-            "gsm8k": "benchmark/datasets/gsm8k.jsonl",
-            "qa": "benchmark/datasets/qa.jsonl",
-            "wmt14": "benchmark/datasets/wmt14.jsonl",
-            "rag": "benchmark/datasets/rag.jsonl",
-            "summarization": "benchmark/datasets/summarization.jsonl",
+            "mtbench": "benchmark/specbench/datasets/mtbench.jsonl",
+            "specbench": "benchmark/specbench/datasets/specbench.jsonl", 
+            "gsm8k": "benchmark/specbench/datasets/gsm8k.jsonl",
+            "qa": "benchmark/specbench/datasets/qa.jsonl",
+            "wmt14": "benchmark/specbench/datasets/wmt14.jsonl",
+            "rag": "benchmark/specbench/datasets/rag.jsonl",
+            "summarization": "benchmark/specbench/datasets/summarization.jsonl",
+            "ruler": "benchmark/ruler/ruler.jsonl",
         }
         
         if dataset_type not in default_paths:
@@ -179,7 +180,7 @@ def save_results(results: List[Dict[str, Any]], output_dir: str,
 
 def get_available_datasets() -> List[str]:
     """Get list of available dataset types"""
-    return ["mtbench", "specbench", "gsm8k", "qa", "wmt14", "rag", "summarization"]
+    return ["mtbench", "specbench", "gsm8k", "qa", "wmt14", "rag", "summarization", "ruler"]
 
 
 def validate_dataset_exists(dataset_type: str, dataset_path: Optional[str] = None) -> bool:

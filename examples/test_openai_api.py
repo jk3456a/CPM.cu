@@ -123,9 +123,9 @@ def test_chat_completion(host, port, stream, temperature):
     url = f"http://{host}:{port}/v1/chat/completions"
     data = {
         "model": "model",
-        "messages": [{"role": "user", "content": "Please tell me how to write quick sort algorithm"}],
+        "messages": [{"role": "user", "content": "帮我写一个名为<旧书>的小说"}],
         "stream": stream,
-        "max_tokens": 1024,
+        "max_tokens": 4096,
         "temperature": temperature
     }
     
