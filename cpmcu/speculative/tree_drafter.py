@@ -64,7 +64,7 @@ class LLM_with_tree_drafter(LLM):
 
             super().load_from_hf()
 
-    def generate(self, input_ids, generation_length=100, teminators=[], use_stream=False, progress_callback=None):
+    def generate(self, input_ids, generation_length=100, teminators=[], use_stream=False, progress_callback=None, temperature=None):
         """
         Generate text with optional streaming output for tree drafter.
         Returns (tokens, accept_lengths, decode_time, prefill_time) if use_stream=False, or generator yielding {'token', 'text', 'is_finished', 'accept_length', 'prefill_time', 'decode_time'} if use_stream=True.
@@ -85,8 +85,10 @@ class LLM_with_tree_drafter(LLM):
         torch.cuda.synchronize()
         prefill_time = time.time() - prefill_start
         
-        if self.temperature > 0.0:
-            self.tree_draft_ids[:1].copy_(torch.multinomial(F.softmax(logits[0]/self.temperature, dim=-1), num_samples=1, generator=self.generator))
+        # Allow per-call temperature override
+        effective_temperature = self.temperature if temperature is None else temperature
+        if effective_temperature > 0.0:
+            self.tree_draft_ids[:1].copy_(torch.multinomial(F.softmax(logits[0]/effective_temperature, dim=-1), num_samples=1, generator=self.generator))
         else:
             self.tree_draft_ids[:1].copy_(logits[0].argmax(dim=-1))
 
@@ -123,8 +125,8 @@ class LLM_with_tree_drafter(LLM):
                     C.draft(self.tree_draft_ids.data_ptr(), self.tree_position_ids.data_ptr(), self.cache_length.data_ptr(), self.tree_attn_mask.data_ptr(), self.tree_parent.data_ptr())
 
                     logits = self.decode(self.tree_draft_ids, self.tree_position_ids, self.cache_length, mask_2d=self.tree_attn_mask)
-                    if self.temperature > 0.0:
-                        self.tree_gt_ids.copy_(torch.multinomial(F.softmax(logits/self.temperature, dim=-1), num_samples=1, generator=self.generator).squeeze(-1))
+                    if effective_temperature > 0.0:
+                        self.tree_gt_ids.copy_(torch.multinomial(F.softmax(logits/effective_temperature, dim=-1), num_samples=1, generator=self.generator).squeeze(-1))
                     else:
                         self.tree_gt_ids.copy_(logits.argmax(dim=-1))
 
@@ -203,8 +205,8 @@ class LLM_with_tree_drafter(LLM):
                 # torch.cuda.nvtx.range_pop()
 
                 logits = self.decode(self.tree_draft_ids, self.tree_position_ids, self.cache_length, mask_2d=self.tree_attn_mask)
-                if self.temperature > 0.0:
-                    self.tree_gt_ids.copy_(torch.multinomial(F.softmax(logits/self.temperature, dim=-1), num_samples=1, generator=self.generator).squeeze(-1))
+                if effective_temperature > 0.0:
+                    self.tree_gt_ids.copy_(torch.multinomial(F.softmax(logits/effective_temperature, dim=-1), num_samples=1, generator=self.generator).squeeze(-1))
                 else:
                     self.tree_gt_ids.copy_(logits.argmax(dim=-1))
 

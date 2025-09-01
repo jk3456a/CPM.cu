@@ -199,14 +199,18 @@ class HierEagleW4A16GMSpecW4A16GM(W4A16GPTQMarlinLLM):
         super().load_from_hf()
     
     
-    def generate(self, input_ids, generation_length=100, teminators=[]):
+    def generate(self, input_ids, generation_length=100, teminators=[], temperature=None):
         assert input_ids.dtype == torch.int32
         
         prefix_length = input_ids.shape[1]
         
         position_ids = torch.arange(prefix_length, dtype=torch.int32, device="cuda")
         logits = self.prefill(input_ids, position_ids)
-        self.draft_ids[:1].copy_(logits[0].argmax(dim=-1))
+        effective_temperature = self.temperature if temperature is None else temperature
+        if effective_temperature > 0.0:
+            self.draft_ids[:1].copy_(torch.multinomial(torch.nn.functional.softmax(logits[0]/effective_temperature, dim=-1), num_samples=1, generator=self.generator))
+        else:
+            self.draft_ids[:1].copy_(logits[0].argmax(dim=-1))
 
         tokens = torch.empty((generation_length), dtype=torch.int32, device="cuda")
         tokens[0].copy_(self.draft_ids[0])
@@ -235,7 +239,10 @@ class HierEagleW4A16GMSpecW4A16GM(W4A16GPTQMarlinLLM):
 
             # step 2: target model decode (length fixed for cuda graph)
             logits = self.decode(self.draft_ids, self.draft_position_ids, self.cache_length, mask_2d=self.draft_attn_mask)
-            self.draft_gt_ids.copy_(logits.argmax(dim=-1))
+            if effective_temperature > 0.0:
+                self.draft_gt_ids.copy_(torch.multinomial(torch.nn.functional.softmax(logits/effective_temperature, dim=-1), num_samples=1, generator=self.generator).squeeze(-1))
+            else:
+                self.draft_gt_ids.copy_(logits.argmax(dim=-1))
             
             # step 6: verify and fix target model and eagle input
             accept_length = C.verify_and_fix(
