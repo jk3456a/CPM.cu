@@ -90,10 +90,10 @@ struct W4A16GPTQMarlinLinear {
     void load_to_storage(std::string name, void* ptr) {
         if (name.find("scales") != std::string::npos) {
             const int s_size = this->num_groups * this->dim_out;
-            cudaMemcpy((void*)scales, ptr, s_size*sizeof(T), cudaMemcpyHostToDevice);
+            cudaMemcpy((void*)scales, ptr, s_size * sizeof(T), cudaMemcpyHostToDevice);
         } else if (name.find("qweight") != std::string::npos) {
             const int w_size = this->dim_in * this->dim_out / 8;
-            cudaMemcpy((void*)weight, ptr, w_size*sizeof(int32_t), cudaMemcpyHostToDevice);
+            cudaMemcpy((void*)weight, ptr, w_size * sizeof(int32_t), cudaMemcpyHostToDevice);
         } else if (name.find("bias") != std::string::npos) {
             cudaMemcpy((void*)bias, ptr, dim_out * sizeof(T), cudaMemcpyHostToDevice);
         } else {

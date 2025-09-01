@@ -9,6 +9,7 @@ import argparse
 import numpy as np
 import json
 from tqdm import tqdm
+from enum import Enum
 
 BASE_MODEL_FILES = [
     "added_tokens.json",
@@ -29,7 +30,15 @@ EAGLE_MODEL_FILES = [
     "config.json"
 ]
 
-EAGLE_SPECIFIC_WEIGHTS = ["fc.qweight", "fc.scales", "input_norm1.weight", "input_norm2.weight"]
+class SpecType(Enum):
+    NO_SPEC = 0
+    EAGLE2 = 1
+    EAGLE3 = 2
+
+SPEC_SPECIFIC_WEIGHTS = {
+    SpecType.EAGLE2: ["fc.qweight", "fc.scales", "input_norm1.weight", "input_norm2.weight"],
+    SpecType.EAGLE3: ["d2t", "fc.qweight", "fc.scales", "midlayer.hidden_norm.weight", "norm.weight"]
+}
 
 # Copied from https://github.com/AutoGPTQ/AutoGPTQ/blob/9f7d37072917ab3a7545835f23e808294a542153/auto_gptq/nn_modules/qlinear/qlinear_marlin.py
 def get_perms():
@@ -62,21 +71,34 @@ def get_perms():
 
 PERM, SCALE_PERM, SCALE_PERM_SINGLE = get_perms()
 
-def check_file_integrity(gptq_path: str) -> bool:
+def check_file_integrity(gptq_path: str) -> tuple[dict, SpecType]:
     files = os.listdir(gptq_path)
 
     assert "model.safetensors" in files, f"model.safetensors not found in {gptq_path}"
     ckpt = load_file(os.path.join(gptq_path, "model.safetensors"))
 
-    is_eagle = True
-    for eagle_specific_weight in EAGLE_SPECIFIC_WEIGHTS:
-        is_eagle &= eagle_specific_weight in ckpt.keys()
+    is_eagle2 = True
+    for eagle_specific_weight in SPEC_SPECIFIC_WEIGHTS[SpecType.EAGLE2]:
+        is_eagle2 &= eagle_specific_weight in ckpt.keys()
 
-    files_to_check = EAGLE_MODEL_FILES if is_eagle else BASE_MODEL_FILES
+    is_eagle3 = True
+    for eagle3_specific_weight in SPEC_SPECIFIC_WEIGHTS[SpecType.EAGLE3]:
+        is_eagle3 &= eagle3_specific_weight in ckpt.keys()
+
+    assert is_eagle2 + is_eagle3 <= 1, "eagle2 and eagle3 cannot be both true"
+
+    if is_eagle2:
+        spec_type = SpecType.EAGLE2
+    elif is_eagle3:
+        spec_type = SpecType.EAGLE3
+    else:
+        spec_type = SpecType.NO_SPEC
+
+    files_to_check = EAGLE_MODEL_FILES if (spec_type != SpecType.NO_SPEC) else BASE_MODEL_FILES
     for file in files_to_check:
         assert file in files, f"File {file} not found in {gptq_path}"
 
-    return ckpt, is_eagle
+    return ckpt, spec_type
 
 def check_quant_config(gptq_path: str) -> dict:
     config_json = os.path.join(gptq_path, "config.json")
@@ -133,7 +155,7 @@ def marlin_repack_qweight(qweight: torch.Tensor, bits: int, size_k: int, size_n:
 
     return repacked_qweight
 
-def gptq_to_marlin(autogptq_weigths: dict, is_eagle: bool, config: dict) -> dict:
+def gptq_to_marlin(autogptq_weigths: dict, spec_type: SpecType, config: dict) -> dict:
 
     bits = config["quantization_config"]["bits"]
     group_size = config["quantization_config"]["group_size"]
@@ -152,6 +174,15 @@ def gptq_to_marlin(autogptq_weigths: dict, is_eagle: bool, config: dict) -> dict
     convert_checkpoint = {}
     processed_keys = set()
     processed_layers = set()
+
+    if spec_type == SpecType.EAGLE3:
+        _autogptq_weights = {}
+        for key in autogptq_weigths:
+            new_key = key
+            if "midlayer" in key:
+                new_key = key.replace("midlayer", "model.layers.0")
+            _autogptq_weights[new_key] = autogptq_weigths[key]
+        autogptq_weigths = _autogptq_weights
 
     for gptq_key in tqdm(autogptq_weigths):
         if gptq_key in processed_keys:
@@ -263,9 +294,11 @@ def gptq_to_marlin(autogptq_weigths: dict, is_eagle: bool, config: dict) -> dict
         else:  
             convert_checkpoint[gptq_key] = autogptq_weigths[gptq_key].clone()
 
-    assert len(processed_layers) == num_hidden_layers, "number of processed layers is not equal to num_hidden_layers"
-
-    if is_eagle:
+    if spec_type == SpecType.NO_SPEC:
+        assert len(processed_layers) == num_hidden_layers, "number of processed layers is not equal to num_hidden_layers"
+        return convert_checkpoint
+    elif spec_type == SpecType.EAGLE2:
+        assert len(processed_layers) == num_hidden_layers, "number of processed layers is not equal to num_hidden_layers"
         eagle_convert_checkpoint = {}
         eagle_convert_checkpoint["embed_tokens.weight"] = convert_checkpoint["model.embed_tokens.weight"].to(torch.float16)
 
@@ -296,15 +329,54 @@ def gptq_to_marlin(autogptq_weigths: dict, is_eagle: bool, config: dict) -> dict
                 eagle_convert_checkpoint[new_key] = value
 
         return eagle_convert_checkpoint
-    else:
-        return convert_checkpoint
+    elif spec_type == SpecType.EAGLE3:
+        eagle3_convert_checkpoint = {}
 
-def save_marlin_model(gptq_path: str, marlin_path: str, convert_checkpoint: dict, is_eagle: bool):
+        eagle3_convert_checkpoint["d2t"] = autogptq_weigths["d2t"].int().cpu()
+
+        # fc
+        x = autogptq_weigths["fc.qweight"].clone().cuda()
+        packed_in_features, out_features = x.shape
+        in_features = packed_in_features * 32 // bits
+        x = marlin_repack_qweight(x, bits, in_features, out_features)
+        eagle3_convert_checkpoint["fc.qweight"] = x.cpu()
+        scales_x = autogptq_weigths["fc.scales"].clone().cuda()
+        scales_x = marlin_permute_scales(scales_x.data.contiguous(), size_k=in_features, size_n=out_features, group_size=group_size)
+        eagle3_convert_checkpoint["fc.scales"] = scales_x.cpu()
+        
+        # lm_head
+        eagle3_convert_checkpoint["lm_head.weight"] = autogptq_weigths["lm_head.weight"] # .to(torch.float16).cpu()
+        
+        # norm
+        eagle3_convert_checkpoint["norm.weight"] = autogptq_weigths["norm.weight"] #.to(torch.float16).cpu()
+
+        # hidden_norm
+        eagle3_convert_checkpoint["model.layers.0.hidden_norm.weight"] = autogptq_weigths["model.layers.0.hidden_norm.weight"] #.to(torch.float16).cpu()
+
+        for key, value in convert_checkpoint.items():
+            if "model.layers." in key:
+                eagle3_convert_checkpoint[key] = value
+            if value.dtype == torch.bfloat16:
+                eagle3_convert_checkpoint[key] = value.to(torch.float16)
+
+        rename_eagle3_convert_checkpoint = {}
+        for key, value in eagle3_convert_checkpoint.items():
+            if "model.layers.0" in key:
+                new_key = key.replace("model.layers.0", "midlayer")
+                rename_eagle3_convert_checkpoint[new_key] = value.cpu()
+            else:
+                rename_eagle3_convert_checkpoint[key] = value.cpu()
+
+        return rename_eagle3_convert_checkpoint
+    else:
+        raise ValueError(f"Invalid spec type: {spec_type}")
+
+def save_marlin_model(gptq_path: str, marlin_path: str, convert_checkpoint: dict, spec_type: SpecType):
     os.makedirs(marlin_path, exist_ok=True)
 
     save_file(convert_checkpoint, os.path.join(marlin_path, "model_gptq.safetensors"))
 
-    files_to_copy = EAGLE_MODEL_FILES if is_eagle else BASE_MODEL_FILES
+    files_to_copy = EAGLE_MODEL_FILES if (spec_type != SpecType.NO_SPEC) else BASE_MODEL_FILES
     files_to_copy.remove("model.safetensors")
 
     for file in files_to_copy:
@@ -320,8 +392,8 @@ if __name__ == "__main__":
     gptq_path = args.src
     marlin_path = args.dst
 
-    checkpoint, is_eagle = check_file_integrity(gptq_path)
+    checkpoint, spec_type = check_file_integrity(gptq_path)
     config = check_quant_config(gptq_path)
 
-    convert_checkpoint = gptq_to_marlin(checkpoint, is_eagle, config)
-    save_marlin_model(gptq_path, marlin_path, convert_checkpoint, is_eagle)
+    convert_checkpoint = gptq_to_marlin(checkpoint, spec_type, config)
+    save_marlin_model(gptq_path, marlin_path, convert_checkpoint, spec_type)
