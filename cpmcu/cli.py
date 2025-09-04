@@ -434,54 +434,39 @@ def run_dataset_evaluation(args):
             })
     
     # Save results
-    # Extract real model name from path
-    if '/' in model_path and not model_path.startswith('/'):
-        # For HuggingFace paths like "unsloth/Meta-Llama-3.1-8B-Instruct"
-        parts = model_path.split('/')
-        if len(parts) >= 2:
-            model_name = '/'.join(parts[-2:])  # Keep org/model format
-        else:
-            model_name = parts[-1]
-    else:
-        # For local paths (starting with /) or simple names
-        model_name = os.path.basename(model_path)
-    
+    model_name = os.path.basename(model_path).replace('/', '_')
     output_file = save_results(results, args.output_dir, args.dataset, model_name)
     
-    # Calculate and display dataset evaluation summary
+    # Calculate and display average performance summary
     successful_results = [r for r in results if not r.get('error', False)]
     if successful_results:
-        # Calculate summary statistics (same as save_results)
-        successful = len(successful_results)
-        total_time = sum(r.get('timing', {}).get('total_time', 0) for r in successful_results)
-        total_tokens = sum(r.get('tokens', {}).get('output_length', 0) for r in successful_results)
+        # Calculate average performance stats
+        avg_stats = {}
         
-        # Calculate mean accept length for speculative decoding
+        # Calculate average input/output lengths
+        total_input_length = sum(r['tokens']['input_length'] for r in successful_results)
+        total_output_length = sum(r['tokens']['output_length'] for r in successful_results)
+        avg_stats['input_length'] = total_input_length // len(successful_results)
+        avg_stats['decode_length'] = total_output_length // len(successful_results)
+        
+        # Calculate average timing
+        total_prefill_time = sum(r['timing']['prefill_time'] for r in successful_results)
+        total_decode_time = sum(r['timing']['decode_time'] for r in successful_results)
+        avg_stats['prefill_time'] = total_prefill_time / len(successful_results)
+        avg_stats['decode_time'] = total_decode_time / len(successful_results)
+        
+        # Calculate average accept lengths for speculative decoding
         all_accept_lengths = []
         for r in successful_results:
             if 'accept_lengths' in r and r['accept_lengths']:
                 all_accept_lengths.extend(r['accept_lengths'])
         
-        summary_stats = {
-            'total_time': round(total_time, 2),
-            'avg_time_per_question': round(total_time / successful, 2) if successful > 0 else 0,
-            'total_output_tokens': total_tokens,
-            'avg_tokens_per_question': round(total_tokens / successful, 2) if successful > 0 else 0,
-            'throughput_tokens_per_sec': round(total_tokens / total_time, 2) if total_time > 0 else 0
-        }
-        
-        # Add mean accept length if available
         if all_accept_lengths:
-            mean_accept_length = sum(all_accept_lengths) / len(all_accept_lengths)
-            summary_stats['mean_accept_length'] = round(mean_accept_length, 2)
+            avg_stats['accept_lengths'] = all_accept_lengths  # Pass all lengths for mean calculation
         
-        success_rate = successful / total_questions if total_questions > 0 else 0
-        
-        # Display dataset evaluation summary
-        display.render_dataset_summary(
-            args.dataset, model_name, total_questions, 
-            successful, success_rate, summary_stats
-        )
+        # Display average performance summary
+        has_speculative = config.get('draft_model_path') is not None
+        print_generation_stats(avg_stats, has_speculative)
     
     # Print summary
     successful = len([r for r in results if not r.get('error', False)])
