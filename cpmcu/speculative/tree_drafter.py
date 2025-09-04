@@ -88,7 +88,13 @@ class LLM_with_tree_drafter(LLM):
         # Allow per-call temperature override
         effective_temperature = self.temperature if temperature is None else temperature
         if effective_temperature > 0.0:
-            self.tree_draft_ids[:1].copy_(torch.multinomial(F.softmax(logits[0]/effective_temperature, dim=-1), num_samples=1, generator=self.generator))
+            scaled_logits = logits[0] / effective_temperature
+            if getattr(self, 'top_p', 1.0) < 1.0:
+                from ..llm import top_p_filtering
+                filtered_logits = top_p_filtering(scaled_logits.unsqueeze(0), getattr(self, 'top_p', 1.0))
+                self.tree_draft_ids[:1].copy_(torch.multinomial(F.softmax(filtered_logits[0], dim=-1), num_samples=1, generator=self.generator))
+            else:
+                self.tree_draft_ids[:1].copy_(torch.multinomial(F.softmax(scaled_logits, dim=-1), num_samples=1, generator=self.generator))
         else:
             self.tree_draft_ids[:1].copy_(logits[0].argmax(dim=-1))
 
@@ -126,7 +132,17 @@ class LLM_with_tree_drafter(LLM):
 
                     logits = self.decode(self.tree_draft_ids, self.tree_position_ids, self.cache_length, mask_2d=self.tree_attn_mask)
                     if effective_temperature > 0.0:
-                        self.tree_gt_ids.copy_(torch.multinomial(F.softmax(logits/effective_temperature, dim=-1), num_samples=1, generator=self.generator).squeeze(-1))
+                        sampled_tokens = []
+                        for i in range(logits.shape[0]):
+                            scaled = logits[i] / effective_temperature
+                            if getattr(self, 'top_p', 1.0) < 1.0:
+                                from ..llm import top_p_filtering
+                                filtered = top_p_filtering(scaled.unsqueeze(0), getattr(self, 'top_p', 1.0))
+                                token = torch.multinomial(F.softmax(filtered[0], dim=-1), num_samples=1, generator=self.generator).item()
+                            else:
+                                token = torch.multinomial(F.softmax(scaled, dim=-1), num_samples=1, generator=self.generator).item()
+                            sampled_tokens.append(token)
+                        self.tree_gt_ids.copy_(torch.tensor(sampled_tokens, dtype=torch.int32, device="cuda"))
                     else:
                         self.tree_gt_ids.copy_(logits.argmax(dim=-1))
 
@@ -206,7 +222,17 @@ class LLM_with_tree_drafter(LLM):
 
                 logits = self.decode(self.tree_draft_ids, self.tree_position_ids, self.cache_length, mask_2d=self.tree_attn_mask)
                 if effective_temperature > 0.0:
-                    self.tree_gt_ids.copy_(torch.multinomial(F.softmax(logits/effective_temperature, dim=-1), num_samples=1, generator=self.generator).squeeze(-1))
+                    sampled_tokens = []
+                    for i in range(logits.shape[0]):
+                        scaled = logits[i] / effective_temperature
+                        if getattr(self, 'top_p', 1.0) < 1.0:
+                            from ..llm import top_p_filtering
+                            filtered = top_p_filtering(scaled.unsqueeze(0), getattr(self, 'top_p', 1.0))
+                            token = torch.multinomial(F.softmax(filtered[0], dim=-1), num_samples=1, generator=self.generator).item()
+                        else:
+                            token = torch.multinomial(F.softmax(scaled, dim=-1), num_samples=1, generator=self.generator).item()
+                        sampled_tokens.append(token)
+                    self.tree_gt_ids.copy_(torch.tensor(sampled_tokens, dtype=torch.int32, device="cuda"))
                 else:
                     self.tree_gt_ids.copy_(logits.argmax(dim=-1))
 

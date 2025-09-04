@@ -130,6 +130,7 @@ def create_model(model_path, draft_model_path, config):
             'use_compress_lse': config['use_compress_lse'],
             'memory_limit': config['memory_limit'],
             'temperature': config.get('temperature', 0.0),
+            'top_p': config.get('top_p', 1.0),
             'random_seed': config.get('random_seed', None),
         }
         spec_kwargs = {

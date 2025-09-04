@@ -235,6 +235,16 @@ async def chat_completions(request: ChatCompletionRequest):
             if tokenizer.eos_token_id not in stop_tokens:
                 stop_tokens.append(tokenizer.eos_token_id)
         
+        # Set per-request sampling params on the model instance
+        original_temp = getattr(model_instance, 'temperature', 0.0)
+        original_top_p = getattr(model_instance, 'top_p', 1.0)
+        model_instance.temperature = request.temperature or 0.0
+        try:
+            model_instance.top_p = request.top_p or 1.0
+        except Exception:
+            # Models without top_p attribute will simply ignore it
+            pass
+
         if request.stream:
             async def _locked_stream():
                 async with _generation_lock:
@@ -248,25 +258,41 @@ async def chat_completions(request: ChatCompletionRequest):
                     ):
                         yield chunk
 
-            return StreamingResponse(
-                _locked_stream(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",  # Disable nginx buffering
-                }
-            )
+            try:
+                return StreamingResponse(
+                    _locked_stream(),
+                    media_type="text/event-stream",
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                        "X-Accel-Buffering": "no",  # Disable nginx buffering
+                    }
+                )
+            finally:
+                # Restore after stream response is created
+                model_instance.temperature = original_temp
+                try:
+                    model_instance.top_p = original_top_p
+                except Exception:
+                    pass
         else:
             async with _generation_lock:
-                return await generate_chat_completion(
-                    input_ids,
-                    request.max_tokens or 100, 
-                    stop_tokens,
-                    request.model,
-                    request,
-                    tokenizer
-                )
+                try:
+                    return await generate_chat_completion(
+                        input_ids,
+                        request.max_tokens or 100, 
+                        stop_tokens,
+                        request.model,
+                        request,
+                        tokenizer
+                    )
+                finally:
+                    # Always restore after non-streaming generation
+                    model_instance.temperature = original_temp
+                    try:
+                        model_instance.top_p = original_top_p
+                    except Exception:
+                        pass
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")

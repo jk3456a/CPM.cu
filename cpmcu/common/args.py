@@ -119,6 +119,8 @@ def create_cli_parser() -> argparse.ArgumentParser:
                        help='Number of tokens to generate (default: 1024)')
     generation_group.add_argument('--temperature', '--temp', type=float, default=0.0,
                              help='Temperature (default: 0.0)')
+    generation_group.add_argument('--top-p', '--top_p', type=float, default=1.0,
+                             help='Top-p (nucleus) sampling threshold (default: 1.0)')
     generation_group.add_argument('--random-seed', '--random_seed', type=int, default=None,
                             help='Random seed')
     generation_group.add_argument('--ignore-eos', '--ignore_eos', default=False,

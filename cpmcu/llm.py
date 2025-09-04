@@ -21,6 +21,33 @@ def dtype_to_int(dtype):
         raise ValueError(f"Unsupported dtype: {dtype}")
     return ret
 
+def top_p_filtering(logits, top_p, min_tokens_to_keep=1):
+    """
+    Filter a distribution of logits using nucleus (top-p) filtering.
+    
+    Args:
+        logits: logits distribution shape (batch_size, vocabulary_size)
+        top_p: keep the top tokens with cumulative probability >= top_p (nucleus filtering).
+        min_tokens_to_keep: minimum number of tokens to keep
+    """
+    if top_p >= 1.0:
+        return logits
+    
+    sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
+    cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+    
+    # Remove tokens with cumulative probability above the threshold
+    sorted_indices_to_remove = cumulative_probs > top_p
+    # Shift the indices to the right to keep also the first token above the threshold
+    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+    sorted_indices_to_remove[..., :min_tokens_to_keep] = 0
+    
+    # Scatter sorted tensors to original indexing
+    indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
+    logits[indices_to_remove] = float('-inf')
+    
+    return logits
+
 class LLM(torch.nn.Module):
     def __init__(self,
                  path: str, # hf model path
@@ -38,6 +65,7 @@ class LLM(torch.nn.Module):
                  use_attn_bias: bool = False,
                  temperature: float = 0.0,
                  random_seed: int = None,
+                 top_p: float = 1.0,
     ):
         super().__init__()
 
@@ -48,6 +76,7 @@ class LLM(torch.nn.Module):
         self.dtype_int = dtype_to_int(self.dtype)
         self.cuda_graph = cuda_graph
         self.temperature = temperature
+        self.top_p = top_p
 
         self.chunk_length = chunk_length
         
@@ -280,7 +309,15 @@ class LLM(torch.nn.Module):
         prefill_time = time.time() - prefill_start
         
         if effective_temperature > 0.0:
-            token = torch.multinomial(F.softmax(logits[0]/effective_temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
+            # Apply temperature scaling
+            scaled_logits = logits[0] / effective_temperature
+            
+            # Apply top_p filtering if needed
+            if self.top_p < 1.0:
+                filtered_logits = top_p_filtering(scaled_logits.unsqueeze(0), self.top_p)
+                token = torch.multinomial(F.softmax(filtered_logits[0], dim=-1), num_samples=1, generator=self.generator)[0].item()
+            else:
+                token = torch.multinomial(F.softmax(scaled_logits, dim=-1), num_samples=1, generator=self.generator)[0].item()
         else:
             token = logits[0].argmax(dim=-1).item()
 
@@ -320,7 +357,15 @@ class LLM(torch.nn.Module):
 
                     logits = self.decode(self.input_ids, self.position_ids, self.cache_length, logits_buffer=local_logits)
                     if effective_temperature > 0.0:
-                        token = torch.multinomial(F.softmax(logits[0]/effective_temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
+                        # Apply temperature scaling
+                        scaled_logits = logits[0] / effective_temperature
+                        
+                        # Apply top_p filtering if needed
+                        if self.top_p < 1.0:
+                            filtered_logits = top_p_filtering(scaled_logits.unsqueeze(0), self.top_p)
+                            token = torch.multinomial(F.softmax(filtered_logits[0], dim=-1), num_samples=1, generator=self.generator)[0].item()
+                        else:
+                            token = torch.multinomial(F.softmax(scaled_logits, dim=-1), num_samples=1, generator=self.generator)[0].item()
                     else:
                         token = logits[0].argmax(dim=-1).item()
                     
@@ -365,7 +410,15 @@ class LLM(torch.nn.Module):
 
                 logits = self.decode(self.input_ids, self.position_ids, self.cache_length, logits_buffer=local_logits)
                 if effective_temperature > 0.0:
-                    token = torch.multinomial(F.softmax(logits[0]/effective_temperature, dim=-1), num_samples=1, generator=self.generator)[0].item()
+                    # Apply temperature scaling
+                    scaled_logits = logits[0] / effective_temperature
+                    
+                    # Apply top_p filtering if needed
+                    if self.top_p < 1.0:
+                        filtered_logits = top_p_filtering(scaled_logits.unsqueeze(0), self.top_p)
+                        token = torch.multinomial(F.softmax(filtered_logits[0], dim=-1), num_samples=1, generator=self.generator)[0].item()
+                    else:
+                        token = torch.multinomial(F.softmax(scaled_logits, dim=-1), num_samples=1, generator=self.generator)[0].item()
                 else:
                     token = logits[0].argmax(dim=-1).item()
                 tokens.append(token)

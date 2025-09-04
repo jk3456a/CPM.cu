@@ -15,11 +15,11 @@ def main():
     
     group.add_argument('--apply-sparse', '--apply_sparse', default=True, type=str2bool, nargs='?', const=True,
                       help='Enable sparse attention (default: True)')
-    group.add_argument('--apply-quant', '--apply_quant', default=True, type=str2bool, nargs='?', const=True,
+    group.add_argument('--apply-quant', '--apply_quant', default=False, type=str2bool, nargs='?', const=True,
                       help='Enable quantization for base model (default: True)')
-    group.add_argument('--apply-eagle', '--apply_eagle', default=True, type=str2bool, nargs='?', const=True,
+    group.add_argument('--apply-eagle', '--apply_eagle', default=False, type=str2bool, nargs='?', const=True,
                       help='Enable Eagle speculative decoding (default: True)')
-    group.add_argument('--apply-eagle-quant', '--apply_eagle_quant', default=True, type=str2bool, nargs='?', const=True,
+    group.add_argument('--apply-eagle-quant', '--apply_eagle_quant', default=False, type=str2bool, nargs='?', const=True,
                       help='Enable quantization for Eagle draft model (default: True)')
     group.add_argument('--minicpm4-yarn', '--minicpm4_yarn', default=True, type=str2bool, nargs='?', const=True,
                       help='Enable MiniCPM4 YARN for long context support (default: True)')

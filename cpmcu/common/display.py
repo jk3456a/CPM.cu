@@ -272,6 +272,7 @@ class Display:
                 ("ignore_eos", "Ignore EOS", None),
                 ("temperature", "Temperature", None),
                 ("random_seed", "Random Seed", None),
+                ("top_p", "Top-P", None),
             ],
             "condition": lambda args: any(hasattr(args, f) for f in ['num_generate', 'use_stream', 'ignore_eos', 'temperature', 'random_seed'])
         }
