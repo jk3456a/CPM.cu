@@ -10,7 +10,7 @@ class ChatMessage(BaseModel):
 class ChatCompletionRequest(BaseModel):
     model: str = "model"
     messages: List[ChatMessage]
-    max_tokens: Optional[int] = Field(default=1024, ge=1, le=16384)
+    max_tokens: Optional[int] = Field(default=1024, ge=1, le=65536)
     temperature: Optional[float] = Field(default=0.0, ge=0.0, le=2.0)
     stream: Optional[bool] = False
     stop: Optional[Union[str, List[str]]] = None
