@@ -31,13 +31,9 @@ def calculate_performance_metrics(record):
     input_length = tokens['input_length']  # Prefill Length
     output_length = tokens['output_length']  # Decode Length
     
-    # Accept lengths数据 - 优先使用已计算好的mean_accept_length
-    if 'mean_accept_length' in record:
-        mean_accept_length = record['mean_accept_length']
-    else:
-        # 回退到自己计算（兼容旧格式）
-        accept_lengths = record.get('accept_lengths', [])
-        mean_accept_length = statistics.mean(accept_lengths) if accept_lengths else 0
+    # Accept lengths数据
+    accept_lengths = record['accept_lengths']
+    mean_accept_length = statistics.mean(accept_lengths) if accept_lengths else 0
     
     # 计算速度指标
     prefill_speed = input_length / prefill_time if prefill_time > 0 else 0
