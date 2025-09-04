@@ -139,12 +139,9 @@ def patch_model_for_logits_capture(model, capture: LogitsCapture):
                         token = tokens[token_idx + j]
                         token_logits = step_logits[j]  # j-th token's logits in this step
                         
-                        tokenizer = AutoTokenizer.from_pretrained("/cache/lizhen/repos/temp-cpm/CPM.cu/models/MiniCPM4-8B/", trust_remote_code=True)
-                        token_text = tokenizer.decode(token)
-                        
                         capture.captured_logits.append((step_id, token_logits.copy(), f"accepted_decode_{step_idx}_{j}"))
                         capture.captured_tokens.append((step_id, token))
-                        print(f"[{capture.config_name}] Step {step_id} (accepted_decode_{step_idx}_{j}): Token {token}('{token_text}'), Logits preview: {token_logits[:5].tolist()}")
+                        print(f"[{capture.config_name}] Step {step_id} (accepted_decode_{step_idx}_{j}): Token {token}, Logits preview: {token_logits[:5].tolist()}")
                     
                     token_idx += accept_length
             
@@ -181,22 +178,20 @@ def run_generation_with_config(spec_num_iter: int, spec_tree_size: int, config_n
     
     # Build argument list
     args_list = [
-        "--model-path", "/cache/lizhen/repos/temp-cpm/CPM.cu/models/MiniCPM4-8B/",
-        "--draft-model-path", "/cache/lizhen/repos/temp-cpm/CPM.cu/models/MiniCPM4-8B-Eagle-FRSpec/",
-        # "--model-path", "unsloth/Meta-Llama-3.1-8B-Instruct",
-        # "--draft-model-path", "jamesliu1/sglang-EAGLE-Llama-3.1-Instruct-8B",
+        # "--model-path", "openbmb/MiniCPM4-8B-marlin-cpmcu",
+        # "--draft-model-path", "openbmb/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu",
+        "--model-path", "unsloth/Meta-Llama-3.1-8B-Instruct",
+        "--draft-model-path", "jamesliu1/sglang-EAGLE-Llama-3.1-Instruct-8B",
         # "--frspec-path", "openbmb/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu",
-        "--prompt-file", "/cache/lizhen/repos/temp-cpm/CPM.cu/prompt.txt",
+        "--prompt-file", "../prompt.txt",
         "--spec-num-iter", str(spec_num_iter),
         "--spec-topk-per-iter", str(topk_per_iter),  # Use calculated value
         "--spec-tree-size", str(spec_tree_size),
-        # "--num-generate", str(comparison_steps),  # Use comparison_steps for generation length
-        # "--minicpm4-yarn",
-        "--spec-window-size", "0",
-        "--model-type", "minicpm",
-        # "--memory-limit", "0.8",  # Set very conservative memory limit to prevent OOM
-        # "--chunk-length", "1024",  # Reduce chunk length to save memory
-        # "--cuda-graph", "false",  # Disable CUDA graph to save memory
+        "--num-generate", str(comparison_steps),  # Use comparison_steps for generation length
+        "--minicpm4-yarn",
+        "--memory-limit", "0.8",  # Set very conservative memory limit to prevent OOM
+        "--chunk-length", "1024",  # Reduce chunk length to save memory
+        "--cuda-graph", "false",  # Disable CUDA graph to save memory
     ]
     
     # Add chat template argument based on parameter
@@ -314,7 +309,6 @@ def run_generation_with_config(spec_num_iter: int, spec_tree_size: int, config_n
         print(f"Decode time: {decode_time:.4f}s")
         print(f"Total tokens: {len(tokens) if hasattr(tokens, '__len__') else 'N/A'}")
         print(f"Accept lengths: {accept_lengths}")
-        print(f"Mean accept length: {np.mean(accept_lengths)}")
         print(f"Captured steps: {len(capture.captured_logits)}")
         
         # Save data
