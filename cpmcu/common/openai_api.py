@@ -3,9 +3,13 @@ from pydantic import BaseModel, Field
 import time
 import uuid
 
+class ContentPartText(BaseModel):
+    type: Literal["text"] = "text"
+    text: str
+
 class ChatMessage(BaseModel):
     role: Literal["system", "user", "assistant"]
-    content: str
+    content: Union[str, List[Union[ContentPartText, Dict[str, Any]]]]
 
 class ChatCompletionRequest(BaseModel):
     model: str = "model"
