@@ -35,6 +35,7 @@ https://github.com/user-attachments/assets/ab36fd7a-485b-4707-b72f-b80b5c43d024
 ## Getting Started
 
 - [Installation](#install)
+- [Docker Usage](#docker)
 - [Model Weights](#modelweights)
 - [Command Line Interface (CLI)](#cli)
 - [OpenAI API Service](#openai-api)
@@ -54,6 +55,45 @@ pip install .
 ```
 
 If you encounter installation issues, please follow the error messages to resolve them or create a GitHub issue. You can use `python setup.py --help-config` to view more installation configuration options.
+
+<div id="docker"></div>
+
+## Docker Usage
+
+We provide pre-built Docker images that support out-of-the-box GPU inference environments.
+
+### Quick Start
+
+```bash
+# Pull pre-built image
+docker pull modelbest-registry.cn-beijing.cr.aliyuncs.com/model-align/cpmcu_cu12.6:v1.0.0
+
+docker tag modelbest-registry.cn-beijing.cr.aliyuncs.com/model-align/cpmcu_cu12.6:v1.0.0 cpmcu:cuda12.6-release
+
+# Run interactive container
+docker run --gpus all -it cpmcu:cuda12.6-release /bin/bash
+
+# Start API server
+docker run --gpus all -p 8000:8000 cpmcu:cuda12.6-release \
+  python examples/minicpm4/start_server.py
+```
+
+### Offline Usage (Recommended)
+
+```bash
+# 1. Download model on host
+huggingface-cli download openbmb/MiniCPM4-8B --local-dir /path/to/model
+
+# 2. Mount model directory and run
+docker run --rm --gpus all \
+  -v /path/to/model:/workspace/model \
+  cpmcu:cuda12.6-release \
+  bash -lc 'cd examples && python3 minicpm4/test_generate.py \
+    --model-path /workspace/model \
+    --prompt-text "Hello" --num-generate 128 --use-stream false'
+```
+
+**Detailed Documentation**: [Docker User Guide](doc/en/docker_use.md)
 
 <div id="modelweights"></div>
 
