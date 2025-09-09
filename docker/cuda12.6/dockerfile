@@ -74,5 +74,8 @@ RUN echo "=== CPM.cu Compilation Configuration ===" && \
     pip install .
 
 
+# Reset working directory for runtime to avoid importing from source tree
+WORKDIR /workspace
+
 # Expose port (if running API server)
 EXPOSE 8000

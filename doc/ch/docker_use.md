@@ -91,12 +91,18 @@ curl -X POST "http://localhost:8000/v1/chat/completions" \
 # 使用hf下载模型
 huggingface-cli download openbmb/MiniCPM4-8B --local-dir /path/to/model
 
+# 同时下载草稿模型与 FRSpec（用于投机采样，建议离线准备）
+huggingface-cli download openbmb/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu --local-dir /path/to/draft
+
 # 运行时挂载并使用本地路径
 docker run --rm --gpus all \
   -v /path/to/model:/workspace/model \
+  -v /path/to/draft:/workspace/draft \
   cpmcu:cuda12.6-release \
   bash -lc 'cd examples && python3 minicpm4/test_generate.py \
     --model-path /workspace/model \
+    --draft-model-path /workspace/draft \
+    --frspec-path /workspace/draft \
     --prompt-text "你好" --num-generate 128 --use-stream false'
 ```
 
