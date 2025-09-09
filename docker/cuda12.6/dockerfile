@@ -1,0 +1,78 @@
+# ARG CUDA_VERSION=12.6.0
+# ARG UBUNTU_VERSION=22.04
+ARG BASE_IMAGE=nvcr.io/nvidia/cuda:12.6.0-devel-ubuntu22.04
+# Default support for mainstream CUDA architectures (excluding 120: CUDA 12.6 doesn't support Blackwell/SM120)
+# 80=A100/A800, 86=RTX30 series, 87=Jetson Orin, 89=RTX40 series, 90=H100/H800
+ARG CUDA_ARCH="80,86,87,89,90"
+# FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS build
+FROM ${BASE_IMAGE} AS build
+
+# Set working directory
+WORKDIR /workspace
+
+# Install system dependencies and Python 3.10
+RUN apt-get update && apt-get install -y \
+    git \
+    build-essential \
+    cmake \
+    ninja-build \
+    wget \
+    curl \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y \
+    python3.10 \
+    python3.10-dev \
+    python3.10-distutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install pip for Python 3.10
+RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py \
+    && python3.10 get-pip.py \
+    && rm get-pip.py
+
+# Create python symlinks pointing to python3.10
+RUN ln -sf /usr/bin/python3.10 /usr/bin/python \
+    && ln -sf /usr/bin/python3.10 /usr/bin/python3
+
+# Upgrade pip
+RUN python -m pip install --upgrade pip
+
+# Install PyTorch and related dependencies
+RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# Install ninja build tool
+RUN pip install ninja
+
+# Clone CPM.cu repository (use proxy only for GitHub, doesn't affect apt/pip)
+ARG http_proxy
+ARG https_proxy
+RUN if [ -n "$http_proxy$https_proxy" ]; then \
+      git -c http.https://github.com.proxy="$http_proxy" \
+          -c https.https://github.com.proxy="$https_proxy" \
+          clone --recursive https://github.com/OpenBMB/CPM.cu.git; \
+    else \
+      git clone --recursive https://github.com/OpenBMB/CPM.cu.git; \
+    fi
+
+# Switch to project directory
+WORKDIR /workspace/CPM.cu
+
+# Set compilation configuration based on CUDA_ARCH and install CPM.cu
+ARG CUDA_ARCH
+RUN echo "=== CPM.cu Compilation Configuration ===" && \
+    echo "CUDA Architecture: $CUDA_ARCH (pre-compiled support)" && \
+    echo "Data Types: fp16,bf16 (full support)" && \
+    echo "Build Mode: Release (production optimized)" && \
+    echo "Supported GPUs: A100/A800(80), RTX30 series(86), Jetson Orin(87), RTX40 series(89), H100/H800(90)" && \
+    echo "=========================================" && \
+    export CPMCU_CUDA_ARCH="$CUDA_ARCH" && \
+    export CPMCU_DEBUG=0 && \
+    export CPMCU_PERF=0 && \
+    export CPMCU_DTYPE=fp16,bf16 && \
+    pip install .
+
+
+# Expose port (if running API server)
+EXPOSE 8000

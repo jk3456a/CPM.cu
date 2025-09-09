@@ -35,6 +35,7 @@ https://github.com/user-attachments/assets/ab36fd7a-485b-4707-b72f-b80b5c43d024
 ## 快速开始
 
 - [框架安装](#install)
+- [Docker 使用](#docker)
 - [模型权重](#modelweights)
 - [命令行接口 (CLI)](#cli)
 - [OpenAI API 服务](#openai-api)
@@ -54,6 +55,43 @@ pip install .
 ```
 
 如遇到安装问题，请根据错误提示进行解决，或通过 GitHub Issues 提交问题反馈。你可以使用 `python setup.py --help-config` 查看更多安装配置信息。
+
+<div id="docker"></div>
+
+## Docker 使用
+
+我们提供了预构建的 Docker 镜像，支持开箱即用的 GPU 推理环境。
+
+### 快速开始
+
+```bash
+# 拉取预构建镜像
+docker pull cpmcu/cpmcu:cuda12.6-release
+
+# 运行交互式容器
+docker run --gpus all -it cpmcu:cuda12.6-release
+
+# 启动 API 服务器
+docker run --gpus all -p 8000:8000 cpmcu:cuda12.6-release \
+  python examples/minicpm4/start_server.py
+```
+
+### 离线使用（推荐）
+
+```bash
+# 1. 在宿主机下载模型
+huggingface-cli download openbmb/MiniCPM4-8B --local-dir /path/to/model
+
+# 2. 挂载模型目录运行
+docker run --rm --gpus all \
+  -v /path/to/model:/workspace/model \
+  cpmcu:cuda12.6-release \
+  bash -lc 'cd examples && python3 minicpm4/test_generate.py \
+    --model-path /workspace/model \
+    --prompt-text "你好" --num-generate 128 --use-stream false'
+```
+
+**详细文档**: [Docker 用户指南](doc/ch/docker_use.md)
 
 <div id="modelweights"></div>
 
