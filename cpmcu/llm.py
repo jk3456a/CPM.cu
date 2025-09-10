@@ -258,7 +258,7 @@ class LLM(torch.nn.Module):
         # torch.cuda.nvtx.range_pop()
         return logits_buf[:input_ids.numel()].clone()
 
-    def generate(self, input_ids, generation_length=100, teminators=[], use_stream=False, progress_callback=None, temperature=None):
+    def generate(self, input_ids, generation_length=100, terminators=[], use_stream=False, progress_callback=None, temperature=None):
         """
         Generate text with optional streaming output.
         Returns (tokens, decode_time, prefill_time) if use_stream=False, or generator yielding {'token', 'text', 'is_finished', 'prefill_time', 'decode_time'} if use_stream=True.
@@ -303,12 +303,12 @@ class LLM(torch.nn.Module):
                 yield {
                     'token': token,
                     'text': text,
-                    'is_finished': token in teminators,
+                    'is_finished': token in terminators,
                     'prefill_time': prefill_time,
                     'decode_time': 0.0  # First token comes from prefill
                 }
                 
-                if token in teminators:
+                if token in terminators:
                     return
 
                 decode_start_time = time.time()
@@ -333,7 +333,7 @@ class LLM(torch.nn.Module):
                     else:
                         text = self.tokenizer.decode([token], skip_special_tokens=True)
                     
-                    is_finished = token in teminators or i == generation_length - 2
+                    is_finished = token in terminators or i == generation_length - 2
                     
                     # Calculate time only when needed to reduce overhead
                     decode_time = time.time() - decode_start_time
@@ -346,7 +346,7 @@ class LLM(torch.nn.Module):
                         'decode_time': decode_time
                     }
                     
-                    if token in teminators:
+                    if token in terminators:
                         break
                     
                     # Update prev_token
@@ -369,7 +369,7 @@ class LLM(torch.nn.Module):
                 else:
                     token = logits[0].argmax(dim=-1).item()
                 tokens.append(token)
-                if token in teminators:
+                if token in terminators:
                     break
             torch.cuda.synchronize()
             decode_time = time.time() - decode_start

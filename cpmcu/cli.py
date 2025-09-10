@@ -108,7 +108,7 @@ def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
         results = llm.generate(
             input_ids=input_ids.view(-1),
             generation_length=config['num_generate'],
-            teminators=terminators,
+            terminators=terminators,
             use_stream=True,
             temperature=config.get('temperature', None),
             progress_callback=progress_callback
@@ -167,7 +167,7 @@ def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
         results = llm.generate(
             input_ids=input_ids.view(-1),
             generation_length=config['num_generate'],
-            teminators=terminators,
+            terminators=terminators,
             use_stream=False,
             temperature=config.get('temperature', None),
             progress_callback=progress_callback

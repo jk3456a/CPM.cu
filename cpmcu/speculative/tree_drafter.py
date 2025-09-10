@@ -64,7 +64,7 @@ class LLM_with_tree_drafter(LLM):
 
             super().load_from_hf()
 
-    def generate(self, input_ids, generation_length=100, teminators=[], use_stream=False, progress_callback=None, temperature=None):
+    def generate(self, input_ids, generation_length=100, terminators=[], use_stream=False, progress_callback=None, temperature=None):
         """
         Generate text with optional streaming output for tree drafter.
         Returns (tokens, accept_lengths, decode_time, prefill_time) if use_stream=False, or generator yielding {'token', 'text', 'is_finished', 'accept_length', 'prefill_time', 'decode_time'} if use_stream=True.
@@ -106,13 +106,13 @@ class LLM_with_tree_drafter(LLM):
                 yield {
                     'token': token,
                     'text': text,
-                    'is_finished': token in teminators,
+                    'is_finished': token in terminators,
                     'accept_length': 1,
                     'prefill_time': prefill_time,
                     'decode_time': 0.0  # First token comes from prefill
                 }
                 
-                if token in teminators:
+                if token in terminators:
                     return
 
                 decode_start_time = time.time()
@@ -163,7 +163,7 @@ class LLM_with_tree_drafter(LLM):
                             else:
                                 text = ""
                             
-                            terminal = token in teminators
+                            terminal = token in terminators
                             is_finished = terminal or (i + j == generation_length - 2)
                             
                             # Only calculate time for the last token in the batch to reduce overhead
@@ -219,7 +219,7 @@ class LLM_with_tree_drafter(LLM):
                 # torch.cuda.nvtx.range_pop()
 
                 accept_lengths.append(accept_length)
-                for temin in teminators:
+                for temin in terminators:
                     if temin in self.tree_draft_ids[:accept_length]:
                         terminal = True
                 append_length = min(accept_length, generation_length - 1 - i)

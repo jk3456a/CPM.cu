@@ -199,7 +199,7 @@ class HierEagleW4A16GMSpecW4A16GM(W4A16GPTQMarlinLLM):
         super().load_from_hf()
     
     
-    def generate(self, input_ids, generation_length=100, teminators=[], temperature=None):
+    def generate(self, input_ids, generation_length=100, terminators=[], temperature=None):
         assert input_ids.dtype == torch.int32
         
         prefix_length = input_ids.shape[1]
@@ -257,7 +257,7 @@ class HierEagleW4A16GMSpecW4A16GM(W4A16GPTQMarlinLLM):
 
             model_step += 1
             accept_lengths.append(accept_length)
-            for temin in teminators:
+            for temin in terminators:
                 if temin in self.draft_gt_ids[:accept_length]:
                     terminal = True
             append_length = min(accept_length, generation_length - 1 - i)
