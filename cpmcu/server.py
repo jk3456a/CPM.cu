@@ -316,7 +316,7 @@ async def generate_chat_completion(
     gen_result = model_instance.generate(
         input_ids.view(-1), 
         generation_length=max_tokens,
-        teminators=stop_tokens,
+        terminators=stop_tokens,
         use_stream=False,
         temperature=request.temperature
     )
@@ -385,7 +385,7 @@ async def stream_chat_completion(
     stream_gen = model_instance.generate(
         input_ids.view(-1),
         generation_length=max_tokens,
-        teminators=stop_tokens,
+        terminators=stop_tokens,
         use_stream=True,
         temperature=request.temperature
     )
