@@ -468,7 +468,7 @@ struct MiniCPM4Eagle3Impl : Model {
     int32_t* tried_history_parent = nullptr;
     bool is_first_draft;
     int draft_vocab_size;
-    int rms_norm_eps;
+    float rms_norm_eps;
 
     int32_t *h_best, *d_best;    
 
