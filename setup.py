@@ -420,6 +420,7 @@ def create_build_extension():
 def build_cuda_extension():
     """Build CUDA extension if possible"""
     from torch.utils.cpp_extension import CUDAExtension
+    import torch
     
     # Show current build configuration
     show_current_config()
@@ -449,18 +450,24 @@ def build_cuda_extension():
     nvcc_threads = os.getenv("NVCC_THREADS") or "8"
     final_nvcc_args = nvcc_args + gencode_args + arch_defines + ["-MMD", "-MP", "--threads", nvcc_threads, "--split-compile", nvcc_threads] 
     
+    # Discover PyTorch libraries and add rpath so runtime can find libc10/libtorch
+    torch_lib_dir = os.path.join(os.path.dirname(torch.__file__), 'lib')
+    library_dirs = [torch_lib_dir]
+    runtime_library_dirs = [torch_lib_dir]
+
     # Create extension
     ext_modules = [
         CUDAExtension(
             name='cpmcu.C',
             sources=sources,
             libraries=["cublas", "dl"],
+            library_dirs=library_dirs,
             depends=headers,
             extra_compile_args={
                 "cxx": cxx_args,
                 "nvcc": final_nvcc_args,
             },
-            extra_link_args=link_args,
+            extra_link_args=link_args + [f"-Wl,-rpath,{torch_lib_dir}"] if link_args is not None else [f"-Wl,-rpath,{torch_lib_dir}"],
             include_dirs=[
                 f"{this_dir}/src/flash_attn",
                 f"{this_dir}/src/flash_attn/src", 
