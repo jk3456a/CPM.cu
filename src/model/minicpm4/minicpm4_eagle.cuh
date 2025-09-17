@@ -700,7 +700,6 @@ struct MiniCPM4Eagle3Impl : Model {
         }
         cudaMemcpy(this->prev_embed, this->model->embedding->output + this->model->hidden_size, (num_tokens - 1) * this->model->hidden_size * sizeof(T), cudaMemcpyDeviceToDevice);
         this->base_model_prefill_embed(num_tokens, num_history_tokens, this->model->embedding->output, position_ids, output);
-        this->prev_hidden_state = eagle3_hidden;
         cudaMemcpy(this->eagle_position_ids, position_ids, num_tokens * sizeof(int32_t), cudaMemcpyDeviceToDevice);
         this->num_prev = num_tokens;
 
