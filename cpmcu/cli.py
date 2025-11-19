@@ -108,7 +108,7 @@ def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
         results = llm.generate(
             input_ids=input_ids.view(-1),
             generation_length=config['num_generate'],
-            teminators=terminators,
+            terminators=terminators,
             use_stream=True,
             temperature=config.get('temperature', None),
             progress_callback=progress_callback
@@ -116,6 +116,8 @@ def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
         
         generated_text = ""
         stats = {'input_length': len(input_ids.view(-1)), 'accept_lengths': []}
+        # Track actual number of generated tokens instead of re-encoding text
+        token_count = 0
         has_speculative = config.get('draft_model_path') is not None
         
         # Use enhanced streaming display
@@ -123,6 +125,9 @@ def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
             # Process streaming results and collect statistics
             for result in results:
                 if isinstance(result, dict):
+                    # Count tokens from model outputs to avoid BPE re-encoding mismatch
+                    if 'token' in result:
+                        token_count += 1
                     if 'text' in result:
                         text = result['text']
                         stream_display.append(text)
@@ -140,9 +145,8 @@ def run_stream_generation(llm, input_ids, config, terminators, tokenizer):
                     stream_display.append(result)
                     generated_text += result
         
-        # Set decode length and print statistics
-        decode_length = len(tokenizer.encode(generated_text, add_special_tokens=False))
-        stats['decode_length'] = decode_length
+        # Set decode length using the counted tokens
+        stats['decode_length'] = token_count
         print_generation_stats(stats, has_speculative)
         
         return generated_text
@@ -163,7 +167,7 @@ def run_non_stream_generation(llm, input_ids, config, terminators, tokenizer):
         results = llm.generate(
             input_ids=input_ids.view(-1),
             generation_length=config['num_generate'],
-            teminators=terminators,
+            terminators=terminators,
             use_stream=False,
             temperature=config.get('temperature', None),
             progress_callback=progress_callback

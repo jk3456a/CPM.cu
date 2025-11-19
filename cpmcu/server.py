@@ -85,6 +85,36 @@ def initialize_model(config):
     return model_instance
 
 
+def normalize_content_to_text(content) -> str:
+    """Normalize OpenAI message content to plain text.
+    Supports both string and array-of-parts with type fields, e.g. [{"type": "text", "text": "..."}].
+    Non-text parts are ignored.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            # Handle dict-like parts
+            if isinstance(part, dict):
+                part_type = part.get("type")
+                if part_type == "text":
+                    text_value = part.get("text", "")
+                    parts.append(text_value if isinstance(text_value, str) else str(text_value))
+                else:
+                    # Ignore non-text types for now
+                    continue
+            else:
+                # Handle model-like objects with attributes (e.g., pydantic model)
+                part_type = getattr(part, "type", None)
+                if part_type == "text":
+                    text_value = getattr(part, "text", "")
+                    parts.append(text_value if isinstance(text_value, str) else str(text_value))
+        return "".join(parts)
+    # Fallback to string conversion for unexpected types
+    return str(content)
+
+
 def format_messages_to_prompt(messages: list, tokenizer) -> str:
     """Convert OpenAI messages format to a single prompt string using chat template"""
     
@@ -94,7 +124,7 @@ def format_messages_to_prompt(messages: list, tokenizer) -> str:
     for message in messages:
         chat_messages.append({
             "role": message.role,
-            "content": message.content
+            "content": normalize_content_to_text(message.content)
         })
     
     # Use tokenizer's chat template to format the prompt
@@ -117,7 +147,7 @@ def simple_format_fallback(messages: list) -> str:
     
     for message in messages:
         role = message.role
-        content = message.content
+        content = normalize_content_to_text(message.content)
         
         if role == "system":
             prompt_parts.append(f"System: {content}")
@@ -312,7 +342,7 @@ async def generate_chat_completion(
     gen_result = model_instance.generate(
         input_ids.view(-1), 
         generation_length=max_tokens,
-        teminators=stop_tokens,
+        terminators=stop_tokens,
         use_stream=False,
         temperature=request.temperature
     )
@@ -381,7 +411,7 @@ async def stream_chat_completion(
     stream_gen = model_instance.generate(
         input_ids.view(-1),
         generation_length=max_tokens,
-        teminators=stop_tokens,
+        terminators=stop_tokens,
         use_stream=True,
         temperature=request.temperature
     )

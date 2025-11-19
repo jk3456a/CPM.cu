@@ -35,6 +35,7 @@ https://github.com/user-attachments/assets/ab36fd7a-485b-4707-b72f-b80b5c43d024
 ## Getting Started
 
 - [Installation](#install)
+- [Docker Usage](#docker)
 - [Model Weights](#modelweights)
 - [Command Line Interface (CLI)](#cli)
 - [OpenAI API Service](#openai-api)
@@ -47,6 +48,8 @@ https://github.com/user-attachments/assets/ab36fd7a-485b-4707-b72f-b80b5c43d024
 
 This library's build depends on torch and ninja. Please install both before installing this library.
 
+Supported Python versions: 3.8–3.12.
+
 ```bash
 git clone https://github.com/OpenBMB/CPM.cu.git --recursive
 cd CPM.cu
@@ -54,6 +57,59 @@ pip install .
 ```
 
 If you encounter installation issues, please follow the error messages to resolve them or create a GitHub issue. You can use `python setup.py --help-config` to view more installation configuration options.
+
+<div id="docker"></div>
+
+## Docker Usage
+
+We provide pre-built Docker images that support out-of-the-box GPU inference environments.
+
+### Docker Images List
+
+| Image | Description | url |
+|-------|-------------|-------|
+| cpmcu:cuda12.6-release | CUDA 12.6 release image recommended |modelbest-registry.cn-beijing.cr.aliyuncs.com/model-align/cpmcu_cu12.6:v1.0.0|
+| cpmcu:cuda12.8-release | CUDA 12.8 develop image, add support for RTX 50 series |modelbest-registry.cn-beijing.cr.aliyuncs.com/model-align/cpmcu_cu12.8:v1.0.0|
+| cpmcu:jetpack6.1| Jetpack 6, add support for Jetson Orin, developing |---------|
+| cpmcu:cuda11.8-release | CUDA 11.8 release image, developing |---------|
+
+### Quick Start
+
+```bash
+# Pull pre-built image
+docker pull modelbest-registry.cn-beijing.cr.aliyuncs.com/model-align/cpmcu_cu12.6:v1.0.0
+
+docker tag modelbest-registry.cn-beijing.cr.aliyuncs.com/model-align/cpmcu_cu12.6:v1.0.0 cpmcu:cuda12.6-release
+
+# Run interactive container
+docker run --gpus all -it cpmcu:cuda12.6-release /bin/bash
+
+# Start API server(need to login to huggingface or -v mount model)
+docker run --gpus all -p 8000:8000 cpmcu:cuda12.6-release \
+  python examples/minicpm4/start_server.py --apply-sparse 
+```
+
+### Offline Usage (Recommended)
+
+```bash
+# 1. Download model on host
+huggingface-cli download openbmb/MiniCPM4-8B-marlin-cpmcu --local-dir model/MiniCPM4-8B-marlin-cpmcu
+
+#    Also download draft model & FRSpec for speculative decoding (optional)
+huggingface-cli download openbmb/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu --local-dir model/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu
+
+# 2. Mount directories and run
+docker run --rm --gpus all \
+  -v /path/to/model:/workspace/model \
+  cpmcu:cuda12.6-release \
+  bash -lc 'cd examples && python3 minicpm4/test_generate.py \
+    --model-path /workspace/model/MiniCPM4-8B-marlin-cpmcu \
+    --draft-model-path /workspace/model/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu \
+    --frspec-path /workspace/model/MiniCPM4-8B-Eagle-FRSpec-QAT-cpmcu \
+    --prompt-text "Hello" --num-generate 128 --use-stream false'
+```
+
+**Detailed Documentation**: [Docker User Guide](doc/en/docker_use.md)
 
 <div id="modelweights"></div>
 
@@ -124,7 +180,7 @@ The following command shows how to use the CLI and set the `temperature` to `0.7
 
 ```bash
 python -m cpmcu.cli \
-    --model-path openbmb/MiniCPM-Llama3-V-2_5-int4 \
+    --model-path openbmb/MiniCPM4-8B \
     --prompt-text "Tell me about Tsinghua University" \
     --temperature 0.7 \
     --use-stream true
@@ -141,9 +197,30 @@ CPM.cu can be deployed as a service compatible with the OpenAI API, making it ea
 We provide a convenient script to load the model and start a FastAPI service.
 
 ```bash
-python examples/minicpm4/start_server.py [options]
+python examples/minicpm4/start_server.py --apply-sparse 
+# This script provides a simple configuration, allowing you to deploy the model with a single parameter.
+
+MiniCPM4 Configuration:
+  --apply-sparse [APPLY_SPARSE], --apply_sparse [APPLY_SPARSE]
+                        Enable sparse attention (default: True)
+  --apply-quant [APPLY_QUANT], --apply_quant [APPLY_QUANT]
+                        Enable quantization for base model (default: True)
+  --apply-eagle [APPLY_EAGLE], --apply_eagle [APPLY_EAGLE]
+                        Enable Eagle speculative decoding (default: True)
+  --apply-eagle-quant [APPLY_EAGLE_QUANT], --apply_eagle_quant [APPLY_EAGLE_QUANT]
+                        Enable quantization for Eagle draft model (default: True)
+  --minicpm4-yarn [MINICPM4_YARN], --minicpm4_yarn [MINICPM4_YARN]
+                        Enable MiniCPM4 YARN for long context support (default: True)
 ```
 After starting, the service listens on `http://localhost:8000` by default. You can change this using the `--host` and `--port` arguments.
+
+For users who need more granular control over inference parameters (e.g., temperature, generation length), we recommend using the `cpmcu.server` module directly. This is the most flexible way to perform detailed configuration and testing.
+
+You can view all available parameters by running `python -m cpmcu.server -h`.
+
+```bash
+python -m cpmcu.server [options]
+```
 
 ### 2. Test the Service
 
@@ -219,6 +296,13 @@ Please cite our paper if you find our work valuable.
   title={FR-Spec: Accelerating Large-Vocabulary Language Models via Frequency-Ranked Speculative Sampling},
   author={Zhao, Weilin and Pan, Tengyu and Han, Xu and Zhang, Yudi and Sun, Ao and Huang, Yuxiang and Zhang, Kaihuo and Zhao, Weilun and Li, Yuxuan and Wang, Jianyong and others},
   journal={arXiv preprint arXiv:2502.14856},
+  year={2025}
+}
+
+@article{zhao2025infllm,
+  title={InfLLM-V2: Dense-Sparse Switchable Attention for Seamless Short-to-Long Adaptation},
+  author={Zhao, Weilin and Zhou, Zihan and Su, Zhou and Xiao, Chaojun and Li, Yuxuan and Li, Yanghao and Zhang, Yudi and Zhao, Weilun and Li, Zhen and Huang, Yuxiang and others},
+  journal={arXiv preprint arXiv:2509.24663},
   year={2025}
 }
 
